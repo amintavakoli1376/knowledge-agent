@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  knowledge-agent:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
