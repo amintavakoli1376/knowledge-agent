@@ -45,13 +45,14 @@ async def lifespan(app: FastAPI):
         'website': WebsiteExtractor(),
     }
     
-    # Set up Telegram bot
+    # Set up Telegram bot (optional — don't fail if unavailable)
     if settings.telegram_bot_token:
         try:
             await bot.setup()
             logger.info("Telegram bot initialized")
         except Exception as e:
             logger.warning(f"Telegram bot init failed: {e}. Bot will be disabled.")
+            logger.warning("To use Telegram bot, ensure network access to api.telegram.org")
     else:
         logger.warning("TELEGRAM_BOT_TOKEN not set. Telegram bot disabled.")
     

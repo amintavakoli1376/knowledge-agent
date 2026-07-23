@@ -9,7 +9,11 @@ class ContentSummarizer:
     """Summarize content using OpenAI LLM."""
     
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+        )
+        self.model = settings.openai_model
     
     async def analyze(self, content: ExtractedContent) -> AIAnalysis:
         """Analyze and summarize content."""
@@ -43,7 +47,7 @@ Return a JSON object with these fields:
 Respond with ONLY the JSON object, no other text."""
 
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a knowledge management assistant. Return only valid JSON."},
                     {"role": "user", "content": prompt}

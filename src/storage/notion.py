@@ -40,37 +40,15 @@ class NotionStorage:
             # Build properties payload - only include non-empty, valid fields
             properties = {}
             
-            # Title (required for database)
-            properties["Title"] = {
-                "title": [{"text": {"content": content.title[:100] or "Untitled"}}]
+            # Title — database uses URL as title field
+            properties["URL"] = {
+                "title": [{"text": {"content": (content.title[:100] or "Untitled")}}]
             }
-            
-            # URL
-            if content.url:
-                properties["URL"] = {"url": content.url}
-            
-            # Platform
-            if content.platform:
-                properties["Platform"] = {
-                    "select": {"name": content.platform.capitalize()}
-                }
-            
-            # Category
-            if analysis.category:
-                properties["Category"] = {
-                    "select": {"name": analysis.category}
-                }
             
             # Tags
             if analysis.tags:
                 properties["Tags"] = {
                     "multi_select": [{"name": t} for t in analysis.tags[:10]]
-                }
-            
-            # Priority
-            if analysis.priority:
-                properties["Priority"] = {
-                    "select": {"name": analysis.priority}
                 }
             
             # Status
@@ -98,10 +76,22 @@ class NotionStorage:
             # Author
             if content.author:
                 properties["Author"] = {
-                    "rich_text": [{"text": {"content": content.author}}]
+                    "rich_text": [{"text": {"content": content.author[:200]}}]
                 }
             
-            # Date
+            # Platform
+            if content.platform:
+                properties["Platform"] = {
+                    "select": {"name": content.platform.capitalize()}
+                }
+            
+            # Category
+            if analysis.category:
+                properties["Category"] = {
+                    "select": {"name": analysis.category}
+                }
+            
+            # Date Saved
             properties["Date Saved"] = {
                 "date": {"start": datetime.now().strftime("%Y-%m-%d")}
             }

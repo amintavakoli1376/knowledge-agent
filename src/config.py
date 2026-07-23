@@ -11,8 +11,10 @@ class Settings(BaseSettings):
     notion_api_key: str = ""
     notion_database_id: str = ""
     
-    # OpenAI
+    # OpenAI / AvalAI
     openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-4o-mini"
     
     # Server
     host: str = "0.0.0.0"

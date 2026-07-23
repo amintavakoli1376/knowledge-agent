@@ -107,7 +107,7 @@ def main():
     }
     
     payload = {
-        "parent": {"page_id": parent_id} if len(parent_id) == 36 else {"page_id": parent_id},
+        "parent": {"type": "page_id", "page_id": parent_id},
         "title": [{"type": "text", "text": {"content": DATABASE_TITLE}}],
         "properties": DATABASE_PROPERTIES,
     }
