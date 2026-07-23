@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Knowledge Agent — Settings</title>
+  <style>
+    :root {
+      --primary: #6366F1;
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --text: #e2e8f0;
+      --muted: rgba(255,255,255,0.4);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 32px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 20px; margin-bottom: 24px; }
+    h1 span { color: var(--primary); }
+    label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus { border-color: var(--primary); }
+    .section { margin-bottom: 24px; }
+    .desc { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+    .btn {
+      padding: 10px 24px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn:hover { opacity: 0.9; }
+    .saved { color: #10b981; font-size: 12px; margin-top: 8px; display: none; }
+    .shortcut {
+      background: var(--surface);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .shortcut kbd {
+      background: rgba(255,255,255,0.1);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚙️ <span>Knowledge Agent</span> Settings</h1>
+
+  <div class="section">
+    <label for="serverUrl">Server URL</label>
+    <input type="url" id="serverUrl" placeholder="http://localhost:8080">
+    <div class="desc">The address where your Knowledge Agent server is running.</div>
+  </div>
+
+  <div class="section">
+    <label for="apiKey">API Key (optional)</label>
+    <input type="password" id="apiKey" placeholder="Leave blank if not required">
+    <div class="desc">If your server requires authentication, enter your API key here.</div>
+  </div>
+
+  <button class="btn" id="saveBtn">💾 Save Settings</button>
+  <div class="saved" id="savedMsg">✅ Settings saved!</div>
+
+  <div class="section" style="margin-top: 32px;">
+    <h2 style="font-size: 14px; margin-bottom: 12px;">⌨️ Keyboard Shortcuts</h2>
+    <div class="shortcut">
+      Save current page: 
+      <kbd>Alt</kbd> + <kbd>K</kbd> (Windows/Linux) · 
+      <kbd>⌘</kbd> + <kbd>K</kbd> (Mac)
+      <br><br>
+      Change shortcuts: 
+      <span style="color:var(--muted);font-size:12px;">
+        chrome://extensions/shortcuts
+      </span>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.08);">
+    <h2 style="font-size: 14px; margin-bottom: 8px;">📖 How to Use</h2>
+    <div class="desc">
+      <b>1. Click extension icon</b> — paste any URL and save<br>
+      <b>2. Right-click</b> — "Save to Knowledge Agent" on any page/link<br>
+      <b>3. Keyboard shortcut</b> — <kbd>Alt+K</kbd> saves current page instantly<br>
+      <b>4. Context menu</b> — Right-click links and select "Save This Link to Notion"
+    </div>
+  </div>
+
+  <script>
+    // Load settings
+    chrome.storage.sync.get(['serverUrl', 'apiKey'], (result) => {
+      document.getElementById('serverUrl').value = result.serverUrl || 'http://localhost:8080';
+      document.getElementById('apiKey').value = result.apiKey || '';
+    });
+
+    // Save settings
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const serverUrl = document.getElementById('serverUrl').value.trim();
+      const apiKey = document.getElementById('apiKey').value.trim();
+      
+      chrome.storage.sync.set({ serverUrl, apiKey }, () => {
+        const msg = document.getElementById('savedMsg');
+        msg.style.display = 'block';
+        setTimeout(() => { msg.style.display = 'none'; }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>

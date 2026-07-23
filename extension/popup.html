@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --primary: #6366F1;
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --text: #e2e8f0;
+      --success: #10b981;
+      --error: #ef4444;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 360px;
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .header {
+      background: linear-gradient(135deg, #6366F1, #8B5CF6);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header img { width: 32px; height: 32px; border-radius: 8px; }
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .header span { font-size: 11px; opacity: 0.8; display: block; }
+    .content { padding: 16px 20px; }
+    .url-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .url-input:focus { border-color: var(--primary); }
+    .url-input::placeholder { color: rgba(255,255,255,0.3); }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: default; }
+    .btn-success { background: var(--success); }
+    .btn-error { background: var(--error); }
+    .status {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.info { background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); }
+    .status.success { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); }
+    .status.error { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); }
+    .footer {
+      padding: 12px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 11px;
+      color: rgba(255,255,255,0.4);
+      display: flex;
+      justify-content: space-between;
+    }
+    .footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .quick-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .quick-btn {
+      flex: 1;
+      padding: 8px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 11px;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.2s;
+    }
+    .quick-btn:hover { background: rgba(99,102,241,0.2); }
+    .quick-btn .emoji { font-size: 18px; display: block; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icon128.png" alt="KA">
+    <div>
+      <h1>Knowledge Agent</h1>
+      <span>Save anything to Notion</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <input class="url-input" id="urlInput" type="url" placeholder="Paste a URL or use current page...">
+    
+    <button class="btn" id="saveBtn">📥 Save to Notion</button>
+
+    <div class="quick-actions">
+      <button class="quick-btn" id="currentPageBtn">
+        <span class="emoji">📄</span> Current Page
+      </button>
+      <button class="quick-btn" id="settingsBtn">
+        <span class="emoji">⚙️</span> Settings
+      </button>
+    </div>
+
+    <div class="status info" id="status"></div>
+  </div>
+
+  <div class="footer">
+    <span id="serverStatus">● Checking...</span>
+    <a href="#" id="openNotionLink" style="display:none">Open in Notion →</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

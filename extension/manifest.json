@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Knowledge Agent",
+  "version": "1.0.0",
+  "description": "Save any page, article, or video to your Notion knowledge base with one click.",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "http://localhost:8080/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "32": "icon32.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "default_title": "Save to Knowledge Agent"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "32": "icon32.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "commands": {
+    "save-page": {
+      "suggested_key": {
+        "default": "Alt+K",
+        "mac": "Command+K"
+      },
+      "description": "Save current page to Notion"
+    }
+  }
+}
