@@ -4,7 +4,9 @@ FastAPI server that handles Telegram webhooks and provides a REST API
 for saving content to Notion.
 """
 import logging
+import re
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -19,7 +21,7 @@ from .extractors.linkedin import LinkedInExtractor
 from .extractors.twitter import TwitterExtractor
 from .processors.summarizer import ContentSummarizer
 from .storage.notion import NotionStorage
-from .models import SaveRequest, SaveResponse
+from .models import SaveRequest, SaveResponse, SetupRequest, SetupResponse
 
 # Configure logging
 logging.basicConfig(
@@ -171,6 +173,43 @@ async def api_save(request: SaveRequest):
     except Exception as e:
         logger.error(f"Save failed: {e}")
         return SaveResponse(
+            success=False,
+            error=str(e)[:500]
+        )
+
+
+@app.post("/api/setup", response_model=SetupResponse)
+async def api_setup(request: SetupRequest):
+    """Auto-create the Notion Knowledge Base database."""
+    if not settings.notion_api_key:
+        return SetupResponse(
+            success=False,
+            error="Notion API not configured. Set NOTION_API_KEY in .env"
+        )
+    
+    try:
+        db_id, db_url = await storage.create_database(request.parent_page_id)
+        
+        # Auto-save to .env (if running locally)
+        env_path = Path(".env")
+        if env_path.exists():
+            env_content = env_path.read_text()
+            if "NOTION_DATABASE_ID=" in env_content:
+                env_content = re.sub(
+                    r"NOTION_DATABASE_ID=.*",
+                    f"NOTION_DATABASE_ID={db_id}",
+                    env_content
+                )
+                env_path.write_text(env_content)
+        
+        return SetupResponse(
+            success=True,
+            database_id=db_id,
+            database_url=db_url,
+        )
+        
+    except Exception as e:
+        return SetupResponse(
             success=False,
             error=str(e)[:500]
         )

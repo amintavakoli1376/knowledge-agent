@@ -15,7 +15,7 @@ from pathlib import Path
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-NOTION_VERSION = "2025-09-03"
+NOTION_CREATE_VERSION = "2022-06-28"
 
 # Find parent page ID — user must provide this
 # This can be a page ID or the ID of an existing page/database
@@ -102,7 +102,7 @@ def main():
     
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Notion-Version": NOTION_VERSION,
+        "Notion-Version": NOTION_CREATE_VERSION,
         "Content-Type": "application/json",
     }
     

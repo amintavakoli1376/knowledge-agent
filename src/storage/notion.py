@@ -117,3 +117,73 @@ class NotionStorage:
             else:
                 error_body = response.text[:500]
                 raise Exception(f"Notion API error ({response.status_code}): {error_body}")
+    
+    async def create_database(self, parent_page_id: str) -> tuple:
+        """Create the Knowledge Base database automatically.
+        
+        Returns: (database_id, database_url)
+        """
+        if not self.api_key:
+            raise Exception("NOTION_API_KEY not configured")
+        
+        DATABASE_TITLE = "Knowledge Base 📚"
+        DATABASE_PROPERTIES = {
+            "Title": {"title": {}},
+            "URL": {"url": {}},
+            "Platform": {"select": {"options": [
+                {"name": "Arxiv", "color": "blue"},
+                {"name": "Youtube", "color": "red"},
+                {"name": "Twitter", "color": "gray"},
+                {"name": "Linkedin", "color": "blue"},
+                {"name": "Instagram", "color": "purple"},
+                {"name": "Github", "color": "green"},
+                {"name": "Website", "color": "gray"},
+                {"name": "Telegram", "color": "blue"},
+                {"name": "Medium", "color": "green"},
+            ]}},
+            "Category": {"select": {"options": [
+                {"name": "AI/ML", "color": "purple"},
+                {"name": "Technology", "color": "blue"},
+                {"name": "Science", "color": "green"},
+                {"name": "Business", "color": "yellow"},
+                {"name": "Social", "color": "gray"},
+                {"name": "Tutorial", "color": "orange"},
+                {"name": "General", "color": "gray"},
+            ]}},
+            "Tags": {"multi_select": {}},
+            "Status": {"select": {"options": [
+                {"name": "Unread", "color": "yellow"},
+                {"name": "Reading", "color": "blue"},
+                {"name": "Read", "color": "green"},
+                {"name": "Archive", "color": "gray"},
+            ]}},
+            "Summary (FA)": {"rich_text": {}},
+            "Summary (EN)": {"rich_text": {}},
+            "Key Points": {"rich_text": {}},
+            "Author": {"rich_text": {}},
+            "Date Saved": {"date": {}},
+        }
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://api.notion.com/v1/databases",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Notion-Version": "2022-06-28",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "parent": {"page_id": parent_page_id},
+                    "title": [{"type": "text", "text": {"content": DATABASE_TITLE}}],
+                    "properties": DATABASE_PROPERTIES,
+                }
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                db_id = data["id"]
+                db_url = data.get("url", "")
+                return db_id, db_url
+            else:
+                error_body = response.text[:500]
+                raise Exception(f"Notion DB creation failed ({response.status_code}): {error_body}")

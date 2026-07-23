@@ -40,3 +40,16 @@ class SaveResponse(BaseModel):
     platform: str = ""
     category: str = ""
     error: Optional[str] = None
+
+
+class SetupRequest(BaseModel):
+    """Request to auto-create Notion database."""
+    parent_page_id: str
+
+
+class SetupResponse(BaseModel):
+    """Response after database creation."""
+    success: bool
+    database_id: Optional[str] = None
+    database_url: Optional[str] = None
+    error: Optional[str] = None
