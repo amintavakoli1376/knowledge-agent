@@ -14,12 +14,18 @@
 cp .env.example .env
 # Edit .env with your API keys
 
-# 2. Run with Docker
-docker-compose up -d
+# 2. Start Zen API Proxy (free AI models: DeepSeek, Qwen)
+git clone https://github.com/bigdata2211it-web/opencode-free-proxy.git
+cd opencode-free-proxy && npm install && node server.mjs &
+# → Proxy running on http://localhost:6446
 
-# Or run directly
+# 3. Start Knowledge Agent
+cd ../knowledge-agent
 pip install -r requirements.txt
 uvicorn src.main:app --reload --port 8080
+
+# 4. Install Browser Extension (optional)
+# Open chrome://extensions → Developer mode → Load unpacked → select extension/
 ```
 
 ## Environment Variables
