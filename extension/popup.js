@@ -131,6 +131,70 @@ function updateServerStatus(isConnected) {
   }
 }
 
+// ===== Toggle Setup Section =====
+document.getElementById('setupBtn').addEventListener('click', () => {
+  const section = document.getElementById('setupSection');
+  section.style.display = section.style.display === 'none' ? 'block' : 'none';
+});
+
+// ===== Create Database =====
+document.getElementById('createDbBtn').addEventListener('click', async () => {
+  const parentId = document.getElementById('parentPageInput').value.trim();
+  if (!parentId) {
+    showStatus('Enter a parent page ID from your Notion URL.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('createDbBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Creating...';
+  showStatus('Creating database...', 'info');
+
+  try {
+    const result = await chrome.storage.sync.get(['serverUrl']);
+    const serverUrl = result.serverUrl || DEFAULT_SERVER;
+
+    const response = await fetch(`${serverUrl}/api/setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parent_page_id: parentId })
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      showStatus(
+        `✅ Database created!\nID: ${data.database_id}`,
+        'success'
+      );
+      btn.textContent = '✅ Done!';
+      
+      // Save to storage
+      chrome.storage.sync.set({ databaseId: data.database_id });
+
+      // Show Notion link
+      const link = document.getElementById('openNotionLink');
+      if (data.database_url) {
+        link.href = data.database_url;
+        link.style.display = 'block';
+        link.textContent = '📖 Open Database in Notion →';
+        link.onclick = () => chrome.tabs.create({ url: data.database_url });
+      }
+    } else {
+      showStatus(`❌ ${data.error || 'Creation failed'}`, 'error');
+      btn.textContent = '❌ Failed';
+    }
+  } catch (error) {
+    showStatus('❌ Cannot reach server. Is Agent running?', 'error');
+    btn.textContent = '❌ Connection Error';
+  }
+
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.textContent = '✨ Create Database';
+  }, 4000);
+});
+
 // ===== Show Status =====
 function showStatus(message, type) {
   const el = document.getElementById('status');

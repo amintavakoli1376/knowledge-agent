@@ -125,9 +125,26 @@
       <button class="quick-btn" id="settingsBtn">
         <span class="emoji">⚙️</span> Settings
       </button>
+      <button class="quick-btn" id="setupBtn">
+        <span class="emoji">🆕</span> Setup DB
+      </button>
     </div>
 
     <div class="status info" id="status"></div>
+
+    <!-- Setup Section (hidden by default) -->
+    <div id="setupSection" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid rgba(255,255,255,0.1);">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">🆕 Auto-Create Notion Database</div>
+      <input class="url-input" id="parentPageInput" type="text" placeholder="Parent page ID (UUID from Notion URL)" style="font-size:12px;margin-bottom:8px;">
+      <button class="btn" id="createDbBtn" style="padding:8px;font-size:12px;background:#10b981;">✨ Create Database</button>
+      <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:8px;line-height:1.5;">
+        How to find your Page ID:<br>
+        1. Open Notion → create a new empty page<br>
+        2. Copy the UUID from the URL:<br>
+        <code style="color:#6366F1;">notion.so/yourpage-<b>1a2b3c4d...</b></code><br>
+        3. Make sure your integration is connected to it
+      </div>
+    </div>
   </div>
 
   <div class="footer">
