@@ -14,6 +14,9 @@ from .gateway.telegram_bot import TelegramBot
 from .utils.url_parser import detect_platform, is_valid_url
 from .extractors.website import WebsiteExtractor
 from .extractors.arxiv import ArxivExtractor
+from .extractors.youtube import YouTubeExtractor
+from .extractors.linkedin import LinkedInExtractor
+from .extractors.twitter import TwitterExtractor
 from .processors.summarizer import ContentSummarizer
 from .storage.notion import NotionStorage
 from .models import SaveRequest, SaveResponse
@@ -42,12 +45,16 @@ async def lifespan(app: FastAPI):
     global extractors
     extractors = {
         'arxiv': ArxivExtractor(),
+        'youtube': YouTubeExtractor(),
+        'twitter': TwitterExtractor(),
+        'linkedin': LinkedInExtractor(),
         'website': WebsiteExtractor(),
     }
     
     # Set up Telegram bot (optional — don't fail if unavailable)
     if settings.telegram_bot_token:
         try:
+            bot.set_extractors(extractors)
             await bot.setup()
             logger.info("Telegram bot initialized")
         except Exception as e:
@@ -129,9 +136,15 @@ async def api_save(request: SaveRequest):
         # Detect platform
         platform = request.platform or detect_platform(url)
         
-        # Select extractor
+        # Select extractor based on platform
         if platform == 'arxiv':
             extractor = extractors['arxiv']
+        elif platform == 'youtube':
+            extractor = extractors['youtube']
+        elif platform == 'twitter':
+            extractor = extractors['twitter']
+        elif platform == 'linkedin':
+            extractor = extractors['linkedin']
         else:
             extractor = extractors['website']
         

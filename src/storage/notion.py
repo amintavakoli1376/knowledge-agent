@@ -40,10 +40,14 @@ class NotionStorage:
             # Build properties payload - only include non-empty, valid fields
             properties = {}
             
-            # Title — database uses URL as title field
-            properties["URL"] = {
+            # Title
+            properties["Title"] = {
                 "title": [{"text": {"content": (content.title[:100] or "Untitled")}}]
             }
+            
+            # URL (actual link)
+            if content.url:
+                properties["URL"] = {"url": content.url}
             
             # Tags
             if analysis.tags:

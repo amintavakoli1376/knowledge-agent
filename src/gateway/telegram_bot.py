@@ -19,13 +19,14 @@ class TelegramBot:
     
     def __init__(self):
         self.token = settings.telegram_bot_token
-        self.extractors = {
-            'arxiv': ArxivExtractor(),
-            'website': WebsiteExtractor(),
-        }
+        self.extractors = {}
         self.summarizer = ContentSummarizer()
         self.storage = NotionStorage()
         self.application = None
+    
+    def set_extractors(self, extractors: dict):
+        """Set the extractor instances from main app."""
+        self.extractors = extractors
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
@@ -62,14 +63,24 @@ class TelegramBot:
         try:
             # Detect platform
             platform = detect_platform(text)
+            platform_emoji = {
+                'arxiv': '📄', 'youtube': '🎥', 'twitter': '🐦',
+                'linkedin': '💼', 'instagram': '📸', 'github': '💻',
+                'medium': '✍️', 'telegram': '💬'
+            }
+            emoji = platform_emoji.get(platform, '🌐')
+            
+            await processing_msg.edit_text(
+                f"{emoji} **Detected:** {platform.capitalize()}\n📥 Extracting content..."
+            )
             
             # Select extractor
-            if platform == 'arxiv':
-                extractor = self.extractors['arxiv']
+            if platform in self.extractors:
+                extractor = self.extractors[platform]
+            elif platform == 'website':
+                extractor = self.extractors.get('website')
             else:
-                # If we have platform-specific extractors, use them.
-                # For now, fall back to website extractor for all non-arxiv.
-                extractor = self.extractors['website']
+                extractor = self.extractors.get('website')
             
             # Step 1: Extract
             await processing_msg.edit_text(f"📥 Extracting content from {platform}...")
