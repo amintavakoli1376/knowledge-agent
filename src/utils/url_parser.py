@@ -12,6 +12,7 @@ PLATFORM_PATTERNS = {
     'telegram': r'(?:https?://)?(?:t\.me|telegram\.me)/',
     'medium': r'(?:https?://)?(?:www\.)?medium\.com/',
     'github': r'(?:https?://)?(?:www\.)?github\.com/',
+    'pdf': r'\.pdf(\?|#|$)',
 }
 
 

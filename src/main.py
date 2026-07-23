@@ -19,6 +19,9 @@ from .extractors.arxiv import ArxivExtractor
 from .extractors.youtube import YouTubeExtractor
 from .extractors.linkedin import LinkedInExtractor
 from .extractors.twitter import TwitterExtractor
+from .extractors.instagram import InstagramExtractor
+from .extractors.pdf import PDFExtractor
+from .extractors.telegram_channel import TelegramChannelExtractor
 from .processors.summarizer import ContentSummarizer
 from .storage.notion import NotionStorage
 from .models import SaveRequest, SaveResponse, SetupRequest, SetupResponse
@@ -50,6 +53,9 @@ async def lifespan(app: FastAPI):
         'youtube': YouTubeExtractor(),
         'twitter': TwitterExtractor(),
         'linkedin': LinkedInExtractor(),
+        'instagram': InstagramExtractor(),
+        'pdf': PDFExtractor(),
+        'telegram': TelegramChannelExtractor(),
         'website': WebsiteExtractor(),
     }
     
@@ -147,6 +153,12 @@ async def api_save(request: SaveRequest):
             extractor = extractors['twitter']
         elif platform == 'linkedin':
             extractor = extractors['linkedin']
+        elif platform == 'instagram':
+            extractor = extractors['instagram']
+        elif platform == 'telegram':
+            extractor = extractors['telegram']
+        elif platform == 'pdf' or url.lower().endswith('.pdf'):
+            extractor = extractors['pdf']
         else:
             extractor = extractors['website']
         
