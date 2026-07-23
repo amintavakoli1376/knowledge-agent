@@ -142,7 +142,7 @@ class TelegramBot:
             await update.message.reply_text(message + "\n*(Notion API not configured)*")
     
     async def setup(self):
-        """Set up the Telegram bot application."""
+        """Set up the Telegram bot application with polling."""
         if not self.token:
             logger.warning("TELEGRAM_BOT_TOKEN not set. Bot disabled.")
             return
@@ -153,13 +153,21 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("help", self.start))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
-        # Set webhook
-        webhook_url = f"https://{settings.host}:{settings.port}/webhook/telegram"
-        
         await self.application.initialize()
         await self.application.start()
         
-        logger.info("Telegram bot started")
+        # Use polling instead of webhook (works on localhost)
+        await self.application.updater.start_polling(drop_pending_updates=True)
+        
+        logger.info("Telegram bot started (polling mode)")
+    
+    async def stop(self):
+        """Stop the Telegram bot."""
+        if self.application:
+            if self.application.updater:
+                await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
     
     async def process_webhook(self, update_data: dict) -> None:
         """Process an incoming webhook update."""
