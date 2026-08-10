@@ -22,7 +22,18 @@ class LinkedInExtractor(BaseExtractor):
     async def extract(self, url: str) -> ExtractedContent:
         """Extract content from a LinkedIn post URL."""
         try:
-            # 1. Try the public embed endpoint first (no login required)
+            # 0. Try document transcript first (full PDF/PPT text, no login)
+            doc_text = await self._extract_document_transcript(url)
+            if doc_text:
+                return ExtractedContent(
+                    title=self._generate_title(doc_text),
+                    full_text=doc_text,
+                    url=url,
+                    platform='linkedin',
+                    metadata={'method': 'document-transcript'}
+                )
+
+            # 1. Try the public embed endpoint next (no login required)
             embed_text = await self._extract_from_embed(url)
             if embed_text:
                 return ExtractedContent(
@@ -97,6 +108,53 @@ class LinkedInExtractor(BaseExtractor):
         
         return None
     
+    async def _extract_document_transcript(self, url: str) -> Optional[str]:
+        """Extract full document text (PDF attachments) via LinkedIn transcript API."""
+        # 1. Fetch post page HTML
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                )
+                if resp.status_code != 200:
+                    return None
+                html = resp.text
+        except Exception:
+            return None
+
+        # 2. Find the document master-manifest URL
+        m = re.search(r'(https?:\\?/\\?/media\.licdn\.com/dms/document/[^"\' ]*?master-manifest[^"\' ]*)', html)
+        if not m:
+            return None
+        manifest_url = m.group(1).replace("&amp;", "&")
+
+        # 3. Fetch manifest -> transcriptManifestUrl -> transcript (same client)
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(manifest_url, headers={"User-Agent": "Mozilla/5.0"})
+                if resp.status_code != 200:
+                    return None
+                manifest = resp.json()
+
+                tran_url = manifest.get("transcriptManifestUrl") or manifest.get("transcribedDocumentUrl")
+                if not tran_url:
+                    return None
+
+                # 4. Fetch transcript -> pages[] with full text
+                resp = await client.get(tran_url, headers={"User-Agent": "Mozilla/5.0"})
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+        except Exception:
+            return None
+
+        pages = data.get("pages") or []
+        if not pages:
+            return None
+        text = "\n\n=== PAGE ===\n\n".join(str(p) for p in pages)
+        return text[:120000]
+
     def _extract_text_from_url(self, url: str) -> Optional[str]:
         """Extract any useful text from LinkedIn post URL patterns."""
         # LinkedIn posts sometimes have URN-encoded text
