@@ -9,6 +9,7 @@ from ..extractors.website import WebsiteExtractor
 from ..extractors.arxiv import ArxivExtractor
 from ..processors.summarizer import ContentSummarizer
 from ..storage.notion import NotionStorage
+from ..storage import sqlite_store
 from ..models import ExtractedContent
 
 logger = logging.getLogger(__name__)
@@ -31,13 +32,18 @@ class TelegramBot:
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command."""
         await update.message.reply_text(
-            "👋 **Welcome to Knowledge Agent!**\n\n"
-            "Send me any link and I'll save it to your Notion database.\n\n"
-            "**Supported platforms:**\n"
-            "🌐 Any website · 📄 ArXiv papers\n"
-            "📱 Instagram · 💼 LinkedIn · 🐦 Twitter/X\n"
-            "🎥 YouTube · 💬 Telegram\n\n"
-            "Just send me a URL and I'll take care of the rest! 🚀"
+            "👋 **به دستیار دانش خوش آمدید!**\n\n"
+            "هر لینکی بفرستید تا خلاصه‌سازی و در Notion ذخیره شود.\n\n"
+            "🚀 **پلتفرم‌های پشتیبانی‌شده:**\n"
+            "📄 ArXiv\n"
+            "🌐 وب‌سایت‌ها\n"
+            "🎥 YouTube\n"
+            "🐦 X / Twitter\n"
+            "📸 اینستاگرام\n"
+            "💼 لینکدین\n"
+            "💬 کانال تلگرام\n"
+            "📎 فایل PDF\n\n"
+            "فقط کافیست لینک را بفرستید! 🚀"
         )
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -50,14 +56,14 @@ class TelegramBot:
         # Check if it's a URL
         if not is_valid_url(text):
             await update.message.reply_text(
-                "❌ Please send a valid URL.\n"
-                "Example: `https://arxiv.org/abs/2401.12345`"
+                "❌ لطفاً یک لینک معتبر بفرستید.\n"
+                "مثال: `https://arxiv.org/abs/2401.12345`"
             )
             return
         
         # Send initial processing message
         processing_msg = await update.message.reply_text(
-            "⏳ Processing your link..."
+            "⏳ در حال پردازش لینک شما..."
         )
         
         try:
@@ -71,7 +77,7 @@ class TelegramBot:
             emoji = platform_emoji.get(platform, '🌐')
             
             await processing_msg.edit_text(
-                f"{emoji} **Detected:** {platform.capitalize()}\n📥 Extracting content..."
+                f"{emoji} **تشخیص:** {platform.capitalize()}\n📥 در حال استخراج محتوا..."
             )
             
             # Select extractor
@@ -83,15 +89,18 @@ class TelegramBot:
                 extractor = self.extractors.get('website')
             
             # Step 1: Extract
-            await processing_msg.edit_text(f"📥 Extracting content from {platform}...")
+            await processing_msg.edit_text(f"📥 در حال استخراج محتوا از {platform}...")
             content = await extractor.extract(text)
             
+            # Step 1.5: Store full text in SQLite (best-effort, for future RAG)
+            sqlite_store.save_content(content)
+            
             # Step 2: Summarize
-            await processing_msg.edit_text("🤖 Analyzing with AI...")
+            await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
             
             # Step 3: Save to Notion
-            await processing_msg.edit_text("💾 Saving to Notion...")
+            await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
             
             # Step 4: Send result
@@ -100,9 +109,9 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Error processing link: {e}")
             await processing_msg.edit_text(
-                f"❌ **Error processing your link**\n\n"
+                f"❌ **خطا در پردازش لینک**\n\n"
                 f"`{str(e)[:200]}`\n\n"
-                "Please try again or send a different link."
+                "لطفاً دوباره تلاش کنید یا لینک دیگری بفرستید."
             )
     
     async def _send_result(self, update: Update, content: ExtractedContent, 
@@ -122,7 +131,7 @@ class TelegramBot:
         tags_text = ' · '.join(f"#{t}" for t in analysis.tags[:5]) if analysis.tags else ""
         
         message = (
-            f"✅ **Saved to Notion!**\n\n"
+            f"✅ **در Notion ذخیره شد!**\n\n"
             f"{emoji} **{content.title[:80]}**\n"
             f"📂 `{analysis.category}` · ⭐ `{analysis.priority}`\n\n"
             f"**خلاصه فارسی:**\n{summary_fa}\n\n"
@@ -157,7 +166,10 @@ class TelegramBot:
         await self.application.start()
         
         # Use polling instead of webhook (works on localhost)
-        await self.application.updater.start_polling(drop_pending_updates=True)
+        await self.application.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "channel_post", "callback_query"],
+        )
         
         logger.info("Telegram bot started (polling mode)")
     

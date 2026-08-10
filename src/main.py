@@ -24,6 +24,7 @@ from .extractors.pdf import PDFExtractor
 from .extractors.telegram_channel import TelegramChannelExtractor
 from .processors.summarizer import ContentSummarizer
 from .storage.notion import NotionStorage
+from .storage import sqlite_store
 from .models import SaveRequest, SaveResponse, SetupRequest, SetupResponse
 
 # Configure logging
@@ -31,6 +32,8 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+# Enable debug logging for telegram lib so we can SEE received updates
+logging.getLogger("telegram").setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Global instances
@@ -165,6 +168,10 @@ async def api_save(request: SaveRequest):
         # Step 1: Extract
         logger.info(f"Extracting content from {platform}: {url}")
         content = await extractor.extract(url)
+        
+        # Step 1.5: Store full text in SQLite (best-effort, for future RAG)
+        sqlite_store.save_content(content)
+        logger.info("Full content saved to SQLite")
         
         # Step 2: Summarize
         logger.info("Analyzing content with AI...")

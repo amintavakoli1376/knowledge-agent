@@ -1,10 +1,13 @@
 """LinkedIn post content extractor.
 
 Extracts post text and metadata from LinkedIn posts.
-Uses Playwright for JavaScript-rendered content.
+Uses LinkedIn's public embed endpoint (works without login).
 """
 import re
 from typing import Optional
+
+import httpx
+from bs4 import BeautifulSoup
 
 from .base import BaseExtractor
 from ..models import ExtractedContent
@@ -19,23 +22,27 @@ class LinkedInExtractor(BaseExtractor):
     async def extract(self, url: str) -> ExtractedContent:
         """Extract content from a LinkedIn post URL."""
         try:
-            # Try simple approach first — extract from URL patterns
-            # LinkedIn post URLs contain the post text in the URL sometimes
+            # 1. Try the public embed endpoint first (no login required)
+            embed_text = await self._extract_from_embed(url)
+            if embed_text:
+                return ExtractedContent(
+                    title=self._generate_title(embed_text),
+                    full_text=embed_text[:8000],
+                    url=url,
+                    platform='linkedin',
+                    metadata={'method': 'embed'}
+                )
+            
+            # 2. Fallback: text from URL
             text_from_url = self._extract_text_from_url(url)
-            
-            # Try Playwright for full page content
-            page_text = await self._try_playwright(url)
-            
-            full_text = page_text or text_from_url or "LinkedIn post content unavailable."
+            full_text = text_from_url or "LinkedIn post content unavailable."
             
             return ExtractedContent(
                 title=self._generate_title(full_text),
                 full_text=full_text[:8000],
                 url=url,
                 platform='linkedin',
-                metadata={
-                    'note': 'LinkedIn extraction uses visible text content',
-                }
+                metadata={'method': 'url-fallback'}
             )
         except Exception as e:
             return ExtractedContent(
@@ -44,6 +51,51 @@ class LinkedInExtractor(BaseExtractor):
                 url=url, platform='linkedin',
                 metadata={'error': str(e)}
             )
+    
+    async def _extract_from_embed(self, url: str) -> Optional[str]:
+        """Extract post content from LinkedIn's public embed endpoint."""
+        # Extract activity/share ID from URL
+        m = re.search(r'(?:activity|share)-(\d+)', url)
+        if not m:
+            return None
+        post_id = m.group(1)
+        
+        # Try activity URN first, then share URN
+        for urn_type in ('activity', 'share'):
+            embed_url = f"https://www.linkedin.com/embed/feed/update/urn:li:{urn_type}:{post_id}"
+            try:
+                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                    resp = await client.get(
+                        embed_url,
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                    )
+                    if resp.status_code != 200:
+                        continue
+                    
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    
+                    # The post text lives in the meta description on the embed page
+                    meta = soup.find('meta', attrs={'name': 'description'})
+                    if meta and meta.get('content') and len(meta['content']) > 30:
+                        # Skip LinkedIn boilerplate text
+                        content = meta['content'].strip()
+                        boilerplate = ('linkedin and 3rd parties', 'cookie policy')
+                        if not content.lower().startswith(boilerplate):
+                            return content[:8000]
+                    
+                    # Fallback: paragraph selectors
+                    text_parts = []
+                    for p in soup.select('.feed-shared-update-v2__description, p, span.visually-hidden'):
+                        t = p.get_text(strip=True)
+                        if t and len(t) > 15 and t not in text_parts:
+                            text_parts.append(t)
+                    
+                    if text_parts:
+                        return '\n\n'.join(text_parts[:8])[:8000]
+            except Exception:
+                continue
+        
+        return None
     
     def _extract_text_from_url(self, url: str) -> Optional[str]:
         """Extract any useful text from LinkedIn post URL patterns."""
@@ -58,60 +110,6 @@ class LinkedInExtractor(BaseExtractor):
             return post_slug
         
         return None
-    
-    async def _try_playwright(self, url: str) -> Optional[str]:
-        """Try to extract content using Playwright."""
-        try:
-            from playwright.async_api import async_playwright
-            
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                )
-                page = await context.new_page()
-                
-                try:
-                    await page.goto(url, timeout=15000, wait_until='domcontentloaded')
-                    await page.wait_for_timeout(3000)
-                    
-                    # Try to get visible text
-                    text = await page.evaluate('''
-                        () => {
-                            const selectors = [
-                                '.feed-shared-update-v2__description',
-                                '.update-components-text',
-                                '.break-words',
-                                'article p',
-                                '[data-test-id="main-feed-activity-card"]',
-                                'main p',
-                            ];
-                            for (const sel of selectors) {
-                                const el = document.querySelector(sel);
-                                if (el && el.textContent.trim().length > 20) {
-                                    return el.textContent.trim();
-                                }
-                            }
-                            // Fallback: all paragraphs
-                            const paragraphs = Array.from(document.querySelectorAll('p'));
-                            return paragraphs.map(p => p.textContent).filter(t => t.trim()).join('\\n').slice(0, 5000);
-                        }
-                    ''')
-                    
-                    await browser.close()
-                    
-                    if text and len(text.strip()) > 20:
-                        return text.strip()
-                        
-                except Exception:
-                    await browser.close()
-                    return None
-                    
-        except ImportError:
-            # Playwright not installed
-            return None
-        except Exception:
-            return None
     
     def _generate_title(self, text: str) -> str:
         """Generate a title from LinkedIn post text."""

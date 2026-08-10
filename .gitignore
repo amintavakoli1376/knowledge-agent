@@ -1,6 +1,13 @@
 # Environment
 .env
 
+# Python venv
+venv/
+.venv/
+
+# Runtime data (SQLite DB with crawled content)
+data/
+
 # Python
 __pycache__/
 *.py[cod]
