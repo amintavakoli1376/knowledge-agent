@@ -176,6 +176,10 @@ async def api_save(request: SaveRequest):
         # Step 2: Summarize
         logger.info("Analyzing content with AI...")
         analysis = await summarizer.analyze(content)
+
+        # Step 2.5: Update SQLite row with AI analysis fields
+        sqlite_store.save_analysis(url, analysis)
+        logger.info("Analysis saved to SQLite")
         
         # Step 3: Save to Notion
         logger.info("Saving to Notion...")

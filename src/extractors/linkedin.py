@@ -23,13 +23,15 @@ class LinkedInExtractor(BaseExtractor):
         """Extract content from a LinkedIn post URL."""
         try:
             # 0. Try document transcript first (full PDF/PPT text, no login)
-            doc_text = await self._extract_document_transcript(url)
-            if doc_text:
+            doc_result = await self._extract_document_transcript(url)
+            if doc_result:
+                doc_text, author = doc_result
                 return ExtractedContent(
                     title=self._generate_title(doc_text),
                     full_text=doc_text,
                     url=url,
                     platform='linkedin',
+                    author=author,
                     metadata={'method': 'document-transcript'}
                 )
 
@@ -41,6 +43,7 @@ class LinkedInExtractor(BaseExtractor):
                     full_text=embed_text[:8000],
                     url=url,
                     platform='linkedin',
+                    author=self._author_from_url(url),
                     metadata={'method': 'embed'}
                 )
             
@@ -53,6 +56,7 @@ class LinkedInExtractor(BaseExtractor):
                 full_text=full_text[:8000],
                 url=url,
                 platform='linkedin',
+                author=self._author_from_url(url),
                 metadata={'method': 'url-fallback'}
             )
         except Exception as e:
@@ -129,6 +133,8 @@ class LinkedInExtractor(BaseExtractor):
             return None
         manifest_url = m.group(1).replace("&amp;", "&")
 
+        author = self._author_from_html(html) or self._author_from_url(url)
+
         # 3. Fetch manifest -> transcriptManifestUrl -> transcript (same client)
         try:
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
@@ -153,7 +159,22 @@ class LinkedInExtractor(BaseExtractor):
         if not pages:
             return None
         text = "\n\n=== PAGE ===\n\n".join(str(p) for p in pages)
-        return text[:120000]
+        return text[:120000], author
+
+    def _author_from_html(self, html: str) -> Optional[str]:
+        """Parse author display name from the LinkedIn post page."""
+        m = re.search(r'property="og:title"\s+content="([^"]*?) on LinkedIn', html)
+        if m:
+            return m.group(1).strip()
+        m = re.search(r'"author":\s*"([^"]+)"', html)
+        if m:
+            return m.group(1).strip()
+        return None
+
+    def _author_from_url(self, url: str) -> str:
+        """Fallback: extract handle from /posts/<handle>_<slug> URL."""
+        m = re.search(r'/posts/([A-Za-z0-9_-]+)_', url)
+        return (m.group(1) or "") if m else ""
 
     def _extract_text_from_url(self, url: str) -> Optional[str]:
         """Extract any useful text from LinkedIn post URL patterns."""

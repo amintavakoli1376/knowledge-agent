@@ -37,11 +37,33 @@ def init_db() -> None:
                 platform TEXT,
                 full_text TEXT,
                 author TEXT,
+                category TEXT,
+                priority TEXT,
+                tags TEXT,
+                summary_fa TEXT,
+                summary_en TEXT,
+                key_points TEXT,
+                status TEXT DEFAULT 'Unread',
                 metadata TEXT,
                 saved_at TEXT NOT NULL
             )
             """
         )
+        # Migration: add columns to older databases
+        for col, ddl in [
+            ("category", "TEXT"),
+            ("priority", "TEXT"),
+            ("tags", "TEXT"),
+            ("summary_fa", "TEXT"),
+            ("summary_en", "TEXT"),
+            ("key_points", "TEXT"),
+            ("status", "TEXT DEFAULT 'Unread'"),
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE content ADD COLUMN {col} {ddl}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
         # FTS5 full-text index (free search over the content)
         try:
             conn.execute(
@@ -86,17 +108,31 @@ def init_db() -> None:
         conn.close()
 
 
-def save_content(content: ExtractedContent) -> None:
-    """Save full extracted content to SQLite. Never raises (best-effort)."""
+def save_content(content: ExtractedContent, analysis=None) -> None:
+    """Save full extracted content to SQLite. Never raises (best-effort).
+
+    analysis: optional AIAnalysis — its fields (summary_fa, summary_en,
+    key_points, category, tags, priority) are stored alongside the content.
+    """
     try:
         init_db()
         conn = _get_connection()
         try:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO content
-                    (url, title, platform, full_text, author, metadata, saved_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO content
+                    (url, title, platform, full_text, author,
+                     category, priority, tags, summary_fa, summary_en,
+                     key_points, status, metadata, saved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                    title=excluded.title, platform=excluded.platform,
+                    full_text=excluded.full_text, author=excluded.author,
+                    category=excluded.category, priority=excluded.priority,
+                    tags=excluded.tags, summary_fa=excluded.summary_fa,
+                    summary_en=excluded.summary_en, key_points=excluded.key_points,
+                    status=excluded.status, metadata=excluded.metadata,
+                    saved_at=excluded.saved_at
                 """,
                 (
                     content.url,
@@ -104,6 +140,13 @@ def save_content(content: ExtractedContent) -> None:
                     content.platform or "",
                     content.full_text or "",
                     getattr(content, "author", "") or "",
+                    (analysis.category if analysis else "") or "",
+                    (analysis.priority if analysis else "") or "",
+                    json.dumps(analysis.tags if analysis else [], ensure_ascii=False),
+                    (analysis.summary_fa if analysis else "") or "",
+                    (analysis.summary_en if analysis else "") or "",
+                    json.dumps(analysis.key_points if analysis else [], ensure_ascii=False),
+                    "Unread",
                     json.dumps(content.metadata or {}, ensure_ascii=False),
                     datetime.now(timezone.utc).isoformat(),
                 ),
@@ -113,6 +156,36 @@ def save_content(content: ExtractedContent) -> None:
             conn.close()
     except Exception as e:
         logging.getLogger(__name__).warning(f"SQLite save skipped: {e}")
+
+
+def save_analysis(url: str, analysis) -> None:
+    """Update the AI-analysis fields of an existing row (by url)."""
+    try:
+        init_db()
+        conn = _get_connection()
+        try:
+            conn.execute(
+                """
+                UPDATE content SET
+                    category=?, priority=?, tags=?, summary_fa=?,
+                    summary_en=?, key_points=?
+                WHERE url=?
+                """,
+                (
+                    analysis.category or "",
+                    analysis.priority or "",
+                    json.dumps(analysis.tags or [], ensure_ascii=False),
+                    analysis.summary_fa or "",
+                    analysis.summary_en or "",
+                    json.dumps(analysis.key_points or [], ensure_ascii=False),
+                    url,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"SQLite analysis save skipped: {e}")
 
 
 def count_content() -> int:

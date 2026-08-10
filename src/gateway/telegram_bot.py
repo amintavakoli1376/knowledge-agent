@@ -98,6 +98,9 @@ class TelegramBot:
             # Step 2: Summarize
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
+
+            # Step 2.5: Update SQLite row with AI analysis fields
+            sqlite_store.save_analysis(text, analysis)
             
             # Step 3: Save to Notion
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
