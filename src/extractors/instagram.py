@@ -51,9 +51,11 @@ class InstagramExtractor(BaseExtractor):
             if not extracted_text:
                 embed_result = await self._get_embed_captioned(shortcode)
                 if embed_result:
-                    emb_caption, emb_author = embed_result
+                    emb_caption, emb_author, emb_images = embed_result
                     extracted_text += f"📝 Caption:\n{emb_caption}\n\n"
                     author = emb_author or author
+                    if emb_images:
+                        image_urls = emb_images or image_urls
             
             # Strategy 2: Playwright with full JS rendering
             if not extracted_text:
@@ -163,7 +165,7 @@ class InstagramExtractor(BaseExtractor):
         return None, None, 0
     
     async def _get_embed_captioned(self, shortcode: str) -> Optional[tuple]:
-        """Extract caption + author from the public embed/captioned endpoint."""
+        """Extract caption, author and image URLs from embed/captioned page."""
         try:
             r = await self.client.get(
                 f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
@@ -178,9 +180,20 @@ class InstagramExtractor(BaseExtractor):
             text = caption_div.get_text('\n', strip=True)
             user_a = caption_div.find('a', class_='CaptionUsername')
             author = user_a.get_text(strip=True) if user_a else ''
+
+            # Image URLs: real post images only (skip avatars / tiny thumbs)
+            images = []
+            for img in soup.find_all('img'):
+                src = (img.get('src') or '').replace('&amp;', '&')
+                if 'cdninstagram.com' not in src:
+                    continue
+                if any(t in src for t in ('s100x100', 's150x150', 's320x320', 't51.2885-19')):
+                    continue  # avatar / tiny
+                if src not in images:
+                    images.append(src)
             if len(text) < 10:
                 return None
-            return text, author
+            return text, author, images[:10]
         except Exception:
             return None
     
