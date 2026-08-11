@@ -47,6 +47,14 @@ class InstagramExtractor(BaseExtractor):
                 extracted_text += f"📝 Caption:\n{caption}\n\n"
                 author = oembed_author or author
             
+            # Strategy 1.5: Public embed/captioned endpoint (no login, no JS)
+            if not extracted_text:
+                embed_result = await self._get_embed_captioned(shortcode)
+                if embed_result:
+                    emb_caption, emb_author = embed_result
+                    extracted_text += f"📝 Caption:\n{emb_caption}\n\n"
+                    author = emb_author or author
+            
             # Strategy 2: Playwright with full JS rendering
             if not extracted_text:
                 page_data = await self._try_playwright_full(url)
@@ -153,6 +161,28 @@ class InstagramExtractor(BaseExtractor):
                 return caption, author, 0
         except: pass
         return None, None, 0
+    
+    async def _get_embed_captioned(self, shortcode: str) -> Optional[tuple]:
+        """Extract caption + author from the public embed/captioned endpoint."""
+        try:
+            r = await self.client.get(
+                f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            if r.status_code != 200:
+                return None
+            soup = BeautifulSoup(r.text, 'html.parser')
+            caption_div = soup.find('div', class_='Caption')
+            if not caption_div:
+                return None
+            text = caption_div.get_text('\n', strip=True)
+            user_a = caption_div.find('a', class_='CaptionUsername')
+            author = user_a.get_text(strip=True) if user_a else ''
+            if len(text) < 10:
+                return None
+            return text, author
+        except Exception:
+            return None
     
     async def _try_playwright_full(self, url: str) -> Optional[dict]:
         """Strategy 2: Playwright with full JS rendering."""
