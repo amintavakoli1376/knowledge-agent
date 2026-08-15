@@ -113,10 +113,25 @@ class NotionStorage:
             
             if response.status_code == 200:
                 data = response.json()
-                return data.get("url")
+                page_id = data.get("id", "")
+                # ساخت لینک پابلیش شده (بدون نیاز به لاگین)
+                published_url = self._build_public_url(page_id)
+                return published_url
             else:
                 error_body = response.text[:500]
                 raise Exception(f"Notion API error ({response.status_code}): {error_body}")
+    
+    def _build_public_url(self, page_id: str) -> str:
+        """ساخت لینک پابلیش‌شده دیتابیس برای دسترسی بدون لاگین."""
+        base = settings.notion_public_base
+        view_id = settings.notion_public_view_id
+        if not page_id:
+            return ""
+        pid = page_id.replace("-", "")
+        url = f"https://{base}/{pid}"
+        if view_id:
+            url += f"?v={view_id}"
+        return url
     
     async def create_database(self, parent_page_id: str) -> tuple:
         """Create the Knowledge Base database automatically.

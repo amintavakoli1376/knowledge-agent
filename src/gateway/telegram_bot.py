@@ -146,8 +146,8 @@ class TelegramBot:
         
         if notion_url:
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📖 Open in Notion", url=notion_url)],
-                [InlineKeyboardButton("🔗 Original Link", url=content.url)]
+                [InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)],
+                [InlineKeyboardButton("🔗 لینک اصلی", url=content.url)]
             ])
             await update.message.reply_text(message, reply_markup=keyboard)
         else:

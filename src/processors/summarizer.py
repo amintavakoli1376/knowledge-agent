@@ -1,22 +1,22 @@
-"""AI summarization processor."""
+"""AI summarization processor using official Google GenAI SDK."""
 import json
-from openai import AsyncOpenAI
+import google.generativeai as genai
 from ..config import settings
 from ..models import ExtractedContent, AIAnalysis
 
 
 class ContentSummarizer:
-    """Summarize content using OpenAI LLM."""
+    """Summarize content using Google Gemini SDK."""
     
     def __init__(self):
-        self.client = AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_base_url,
+        genai.configure(api_key=settings.openai_api_key)  # using the stored API key field
+        self.model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash",
+            generation_config={"response_mime_type": "application/json"}
         )
-        self.model = settings.openai_model
     
     async def analyze(self, content: ExtractedContent) -> AIAnalysis:
-        """Analyze and summarize content."""
+        """Analyze and summarize content using Gemini."""
         if not content.full_text or content.full_text.startswith("Failed"):
             return AIAnalysis(
                 summary_fa="❌ امکان استخراج محتوا وجود نداشت.",
@@ -46,18 +46,9 @@ Return a JSON object with these fields:
 
 Respond with ONLY the JSON object, no other text."""
 
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a knowledge management assistant. Return only valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=800,
-                temperature=0.3
-            )
-            
-            result = json.loads(response.choices[0].message.content)
+            # Call Gemini asynchronously
+            response = await self.model.generate_content_async(prompt)
+            result = json.loads(response.text)
             
             return AIAnalysis(
                 summary_fa=result.get("summary_fa", "خلاصه در دسترس نیست."),
@@ -70,8 +61,9 @@ Respond with ONLY the JSON object, no other text."""
             
         except Exception as e:
             return AIAnalysis(
-                summary_fa=f"خطا در خلاصه‌سازی: {str(e)}",
-                summary_en=f"Summarization error: {str(e)}",
+                summary_fa=f"خطا در خلاصه‌سازی با جمنای: {str(e)}",
+                summary_en=f"Gemini summarization error: {str(e)}",
                 category="General",
-                tags=["error"]
+                tags=["error"],
+                priority="Low"
             )

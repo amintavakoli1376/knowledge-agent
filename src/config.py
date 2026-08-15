@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     # Notion
     notion_api_key: str = ""
     notion_database_id: str = ""
+    notion_public_base: str = "amusing-nutmeg-2ca.notion.site"
+    notion_public_view_id: str = ""
+    
+    # Bright Data (Web Unlocker for LinkedIn/blocked sites)
+    brightdata_key: str = ""
     
     # OpenAI / AvalAI
     openai_api_key: str = ""

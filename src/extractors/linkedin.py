@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from .base import BaseExtractor
 from ..models import ExtractedContent
+from ..config import settings
 
 
 class LinkedInExtractor(BaseExtractor):
@@ -47,7 +48,20 @@ class LinkedInExtractor(BaseExtractor):
                     metadata={'method': 'embed'}
                 )
             
-            # 2. Fallback: text from URL
+            # 2. Bright Data Web Unlocker (اگر کلید تنظیم شده باشه)
+            if settings.brightdata_key:
+                bd_text = await self._extract_via_brightdata(url)
+                if bd_text:
+                    return ExtractedContent(
+                        title=self._generate_title(bd_text),
+                        full_text=bd_text[:8000],
+                        url=url,
+                        platform='linkedin',
+                        author=self._author_from_url(url),
+                        metadata={'method': 'brightdata'}
+                    )
+            
+            # 3. Fallback: text from URL
             text_from_url = self._extract_text_from_url(url)
             full_text = text_from_url or "LinkedIn post content unavailable."
             
@@ -112,6 +126,82 @@ class LinkedInExtractor(BaseExtractor):
         
         return None
     
+    async def _extract_via_brightdata(self, url: str) -> Optional[str]:
+        """Extract LinkedIn post content via Bright Data Datasets API (Web Scraper).
+        
+        Trigger dataset -> poll snapshot -> parse NDJSON result -> extract post text.
+        Uses the LinkedIn post scraper dataset (gd_lyy3tktm25m4avu764).
+        """
+        if not settings.brightdata_key:
+            return None
+        try:
+            import json
+            import urllib.request
+            import time
+
+            dataset_id = "gd_lyy3tktm25m4avu764"
+            trigger_url = (
+                f"https://api.brightdata.com/datasets/v3/trigger"
+                f"?dataset_id={dataset_id}&include_errors=true"
+            )
+            payload = json.dumps([{"url": url}]).encode()
+            req = urllib.request.Request(
+                trigger_url,
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {settings.brightdata_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=40) as r:
+                snap = json.loads(r.read())
+            sid = snap.get("snapshot_id")
+            if not sid:
+                return None
+
+            # Poll snapshot until ready
+            snap_url = f"https://api.brightdata.com/datasets/v3/snapshot/{sid}"
+            headers = {"Authorization": f"Bearer {settings.brightdata_key}"}
+            for _ in range(30):  # up to ~5 min
+                req2 = urllib.request.Request(snap_url, headers=headers)
+                with urllib.request.urlopen(req2, timeout=40) as r2:
+                    body = r2.read().decode("utf-8", errors="replace")
+                # 202 = still running; 200 = ready
+                if r2.status == 200 and body.strip():
+                    break
+                time.sleep(10)
+            else:
+                return None
+
+            # Parse NDJSON (one JSON object per line)
+            for line in body.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except Exception:
+                    continue
+                # Bright Data LinkedIn scraper returns various fields; pick the post text
+                text = (
+                    item.get("post_text")
+                    or item.get("text")
+                    or item.get("description")
+                    or item.get("content")
+                    or (item.get("supplementary_data", {}).get("content", {}).get("com.linkedin.kfeed.sharedContextualFeedEntity") or {}).get("text")
+                )
+                if isinstance(text, str) and len(text) > 30:
+                    return text.strip()[:8000]
+                # sometimes text is nested deeper
+                if isinstance(item, dict):
+                    for v in item.values():
+                        if isinstance(v, str) and len(v) > 80 and "linkedin" not in v.lower():
+                            return v.strip()[:8000]
+            return None
+        except Exception:
+            return None
+
     async def _extract_document_transcript(self, url: str) -> Optional[str]:
         """Extract full document text (PDF attachments) via LinkedIn transcript API."""
         # 1. Fetch post page HTML
