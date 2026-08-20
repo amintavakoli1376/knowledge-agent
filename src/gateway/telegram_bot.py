@@ -130,8 +130,13 @@ class TelegramBot:
         await self._ask_rag(update, question)
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming messages: links/raw posts (saved) OR questions (RAG /ask)."""
+        """Handle incoming messages: links/raw posts (saved) OR questions (RAG /ask) OR files."""
         if not update.message:
+            return
+        
+        # 📄 فایل ارسالی (PDF و امثالش) → مستقیم پردازش و ذخیره
+        if update.message.document:
+            await self._process_document(update, context)
             return
         
         # استخراج متن از پیام یا کپشن فوروارد
@@ -287,6 +292,83 @@ class TelegramBot:
         except Exception as e:
             logger.warning(f"Embedding failed (non-blocking): {e}")
     
+    async def _process_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """پردازش فایل ارسالی (PDF و ...): دانلود → استخراج متن → خلاصه → ذخیره."""
+        doc = update.message.document
+        file_name = doc.file_name or "document"
+        mime = (doc.mime_type or "").lower()
+
+        processing_msg = await update.message.reply_text(
+            f"📄 در حال دریافت فایل `{file_name}`..."
+        )
+        try:
+            if "pdf" not in mime and not file_name.lower().endswith(".pdf"):
+                await processing_msg.edit_text(
+                    "❌ فقط فایل‌های PDF پشتیبانی می‌شوند. لطفاً یک PDF بفرستید."
+                )
+                return
+
+            # دانلود فایل از تلگرام
+            file = await context.bot.get_file(doc.file_id)
+            import tempfile, os
+            tmp_path = None
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp_path = tmp.name
+            await file.download_to_drive(tmp_path)
+
+            # استخراج متن با PyMuPDF
+            import fitz
+            full_text = ""
+            title = ""
+            pdf = fitz.open(tmp_path)
+            for page_num in range(len(pdf)):
+                page = pdf[page_num]
+                text = page.get_text().strip()
+                if page_num == 0 and text:
+                    lines = text.split("\n")
+                    title = lines[0][:200] if lines else file_name
+                full_text += text + "\n\n"
+            pages = len(pdf)
+            pdf.close()
+
+            # پاک‌سازی فایل موقت
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+            if not full_text.strip():
+                raise ValueError("این PDF متنی استخراج‌شدنی ندارد (شاید اسکن‌شده باشد).")
+
+            title = title or file_name.replace(".pdf", "").replace("_", " ")[:100]
+
+            content = ExtractedContent(
+                url=f"telegram-file://{file_name}",
+                title=title,
+                full_text=full_text[:10000],
+                platform="pdf",
+                metadata={"pages": pages, "source": "telegram-upload", "file_name": file_name},
+            )
+
+            # چک تکراری بر اساس اسم فایل + ذخیره
+            sqlite_store.save_content(content)
+
+            await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
+            analysis = await self.summarizer.analyze(content)
+            sqlite_store.save_analysis(content.url, analysis)
+
+            await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
+            notion_url = await self.storage.save(content, analysis)
+
+            await self._send_result(update, content, analysis, notion_url)
+
+            # ⚡ embedding بعد از جواب
+            asyncio.create_task(self._embed_content(content))
+
+        except Exception as e:
+            logger.error(f"Error processing document: {e}")
+            await processing_msg.edit_text(
+                f"❌ **خطا در پردازش فایل**\n\n`{str(e)[:200]}`"
+            )
+
     async def _process_raw_post(self, update: Update, text: str, post_url: str = ""):
         """پردازش پست خام (مثل فوروارد تلگرام): متن پست رو خلاصه کن و لینک t.me رو به عنوان منبع نگه دار."""
         processing_msg = await update.message.reply_text(
@@ -380,7 +462,7 @@ class TelegramBot:
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
         self.application.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
+                (filters.TEXT | filters.CAPTION | filters.DOCUMENT) & ~filters.COMMAND,
                 self.handle_message
             )
         )
