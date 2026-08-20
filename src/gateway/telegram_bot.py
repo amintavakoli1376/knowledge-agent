@@ -462,7 +462,7 @@ class TelegramBot:
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
         self.application.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.CAPTION | filters.DOCUMENT) & ~filters.COMMAND,
+                (filters.TEXT | filters.CAPTION | filters.ATTACHMENT) & ~filters.COMMAND,
                 self.handle_message
             )
         )
