@@ -49,19 +49,29 @@ class TelegramBot:
         """Set the extractor instances from main app."""
         self.extractors = extractors
     
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command with inline mode buttons."""
-        keyboard = InlineKeyboardMarkup([
+    def _main_menu_keyboard(self) -> InlineKeyboardMarkup:
+        """کيبورد منوی اصلی (انتخاب حالت)."""
+        return InlineKeyboardMarkup([
             [InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")],
             [InlineKeyboardButton("💾 ذخیره مطلب", callback_data="mode:save")],
         ])
+
+    @staticmethod
+    def _back_to_menu_keyboard() -> InlineKeyboardMarkup:
+        """کيبورد دکمه برگشت به منوی اصلی."""
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")],
+        ])
+
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command with inline mode buttons."""
         await update.message.reply_text(
             "👋 **به دستیار دانش خوش آمدید!**\n\n"
             "یکی از حالت‌ها را انتخاب کنید:\n\n"
             "🧠 **گفتگو با دانش** — سؤالتان را بپرسید، از پایگاه دانش جواب می‌گیرید.\n"
             "💾 **ذخیره مطلب** — لینک یا پست بفرستید تا خلاصه و در Notion ذخیره شود.\n\n"
             "بعد از انتخاب، هر پیامی که بفرستید در همان حالت پردازش می‌شود.",
-            reply_markup=keyboard,
+            reply_markup=self._main_menu_keyboard(),
         )
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,15 +91,29 @@ class TelegramBot:
                 "🧠 **حالت گفتگو با دانش فعال شد**\n\n"
                 "سؤالتان را بنویسید — از پایگاه دانش جواب می‌گیرید.\n"
                 "مثلاً: «بهترین مقاله درباره RAG چیست؟»\n\n"
-                "برای بازگشت به منو: /start"
+                "🔙 برای بازگشت به منو، دکمه پایین را بزنید.",
+                reply_markup=self._back_to_menu_keyboard(),
             )
         elif data == "mode:save":
             if user_id is not None:
                 context.user_data["mode"] = "save"
             await query.edit_message_text(
                 "💾 **حالت ذخیره مطلب فعال شد**\n\n"
-                "لینک یا پست تلگرام بفرستید تا خلاصه‌سازی و ذخیره شود.\n"
-                "برای بازگشت به منو: /start"
+                "لینک یا پست تلگرام بفرستید تا خلاصه‌سازی و ذخیره شود.\n\n"
+                "🔙 برای بازگشت به منو، دکمه پایین را بزنید.",
+                reply_markup=self._back_to_menu_keyboard(),
+            )
+        elif data == "menu:main":
+            # بازگشت به منوی اصلی — حالت فعلی پاک می‌شود
+            if user_id is not None:
+                context.user_data.pop("mode", None)
+            await query.edit_message_text(
+                "👋 **به دستیار دانش خوش آمدید!**\n\n"
+                "یکی از حالت‌ها را انتخاب کنید:\n\n"
+                "🧠 **گفتگو با دانش** — سؤالتان را بپرسید، از پایگاه دانش جواب می‌گیرید.\n"
+                "💾 **ذخیره مطلب** — لینک یا پست بفرستید تا خلاصه و در Notion ذخیره شود.\n\n"
+                "بعد از انتخاب، هر پیامی که بفرستید در همان حالت پردازش می‌شود.",
+                reply_markup=self._main_menu_keyboard(),
             )
 
     async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -163,11 +187,14 @@ class TelegramBot:
         try:
             engine = RagEngine()
             answer = await engine.ask(question)
-            await processing.edit_text(answer)
+            # دکمه برگشت به منو همیشه چسبیده به جواب
+            answer += "\n\n_برای تغییر حالت، از منو استفاده کنید._"
+            await processing.edit_text(answer, reply_markup=self._back_to_menu_keyboard())
         except Exception as e:
             logger.error(f"RAG ask failed: {e}")
             await processing.edit_text(
-                f"❌ **خطا در جستجوی دانش**\n\n`{str(e)[:200]}`"
+                f"❌ **خطا در جستجوی دانش**\n\n`{str(e)[:200]}`",
+                reply_markup=self._back_to_menu_keyboard(),
             )
     
     async def _process_link(self, update: Update, url: str):
@@ -300,10 +327,14 @@ class TelegramBot:
                 [InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)],
                 [InlineKeyboardButton("🔗 لینک اصلی", url=content.url)],
                 [InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")],
+                [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")],
             ])
             await update.message.reply_text(message, reply_markup=keyboard)
         else:
-            await update.message.reply_text(message + "\n*(Notion API not configured)*")
+            await update.message.reply_text(
+                message + "\n*(Notion API not configured)*",
+                reply_markup=self._back_to_menu_keyboard(),
+            )
     
     async def setup(self):
         """Set up the Telegram bot application with polling."""
