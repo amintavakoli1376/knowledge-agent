@@ -55,6 +55,7 @@ Respond with ONLY the JSON object, no other text."""
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.4,
+                max_tokens=600,  # خلاصه ۳-۴ خطی + کی‌پوینت‌ها — ۶۰۰ کافیه و سریع‌تره
             )
 
             raw = resp.choices[0].message.content or ""

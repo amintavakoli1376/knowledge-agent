@@ -1,5 +1,6 @@
 """Telegram Bot gateway."""
 import asyncio
+import json
 import logging
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,7 +13,7 @@ from ..extractors.arxiv import ArxivExtractor
 from ..processors.summarizer import ContentSummarizer
 from ..storage.notion import NotionStorage
 from ..storage import sqlite_store
-from ..models import ExtractedContent
+from ..models import ExtractedContent, AIAnalysis
 from ..rag.chunker import chunk_text
 from ..rag.embedder import get_embedder
 from ..rag import vector_store
@@ -199,6 +200,28 @@ class TelegramBot:
     
     async def _process_link(self, update: Update, url: str):
         """پردازش لینک (استخراج + خلاصه + ذخیره)."""
+        # ⚡ چک تکراری: اگه قبلاً ذخیره شده، سریع از DB نمایش بده
+        existing = sqlite_store.get_by_url(url)
+        if existing and existing.get("summary_fa"):
+            msg = await update.message.reply_text("⚡ این لینک قبلاً ذخیره شده — خلاصه از دیتابیس:")
+            content = ExtractedContent(
+                url=url,
+                title=existing.get("title") or url,
+                full_text=existing.get("full_text") or "",
+                platform=existing.get("platform") or "website",
+            )
+            analysis = AIAnalysis(
+                summary_fa=existing.get("summary_fa") or "",
+                summary_en=existing.get("summary_en") or "",
+                key_points=json.loads(existing.get("key_points") or "[]"),
+                category=existing.get("category") or "General",
+                tags=json.loads(existing.get("tags") or "[]"),
+                priority=existing.get("priority") or "Medium",
+            )
+            notion_url = ""  # از Notion دوباره ذخیره نمی‌کنیم
+            await self._send_result(update, content, analysis, notion_url)
+            return
+
         processing_msg = await update.message.reply_text(
             "⏳ در حال پردازش لینک شما..."
         )
@@ -220,7 +243,6 @@ class TelegramBot:
             await processing_msg.edit_text(f"📥 در حال استخراج محتوا از {platform}...")
             content = await extractor.extract(url)
             sqlite_store.save_content(content)
-            await self._embed_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
@@ -230,6 +252,9 @@ class TelegramBot:
             notion_url = await self.storage.save(content, analysis)
             
             await self._send_result(update, content, analysis, notion_url)
+            
+            # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
+            asyncio.create_task(self._embed_content(content))
             
         except Exception as e:
             logger.error(f"Error processing link: {e}")
@@ -277,7 +302,6 @@ class TelegramBot:
                 platform="telegram",
             )
             sqlite_store.save_content(content)
-            await self._embed_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
@@ -287,6 +311,9 @@ class TelegramBot:
             notion_url = await self.storage.save(content, analysis)
             
             await self._send_result(update, content, analysis, notion_url)
+            
+            # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
+            asyncio.create_task(self._embed_content(content))
             
         except Exception as e:
             logger.error(f"Error processing raw post: {e}")

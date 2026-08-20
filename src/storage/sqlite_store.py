@@ -188,6 +188,24 @@ def save_analysis(url: str, analysis) -> None:
         logging.getLogger(__name__).warning(f"SQLite analysis save skipped: {e}")
 
 
+def get_by_url(url: str) -> dict | None:
+    """Return stored row (with summary) for a URL, or None if not saved."""
+    try:
+        init_db()
+        conn = _get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM content WHERE url = ? LIMIT 1",
+                (url,),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"SQLite get_by_url failed: {e}")
+        return None
+
+
 def count_content() -> int:
     """Number of stored items (for verification/monitoring)."""
     try:
