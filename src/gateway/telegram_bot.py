@@ -1,4 +1,5 @@
 """Telegram Bot gateway."""
+import asyncio
 import logging
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,6 +13,10 @@ from ..processors.summarizer import ContentSummarizer
 from ..storage.notion import NotionStorage
 from ..storage import sqlite_store
 from ..models import ExtractedContent
+from ..rag.chunker import chunk_text
+from ..rag.embedder import get_embedder
+from ..rag import vector_store
+from ..rag.rag_engine import RagEngine
 
 logger = logging.getLogger(__name__)
 URL_REGEX = re.compile(r'(https?://[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?)')
@@ -49,6 +54,9 @@ class TelegramBot:
         await update.message.reply_text(
             "👋 **به دستیار دانش خوش آمدید!**\n\n"
             "هر لینکی بفرستید تا خلاصه‌سازی و در Notion ذخیره شود.\n\n"
+            "🧠 برای جستجو در دانش، بنویسید:\n"
+            "`/ask سوال شما`\n"
+            "یا مستقیم سوال بپرسید (مثلاً: «بهترین مقاله درباره RAG چیست؟»)\n\n"
             "🚀 **پلتفرم‌های پشتیبانی‌شده:**\n"
             "📄 ArXiv\n"
             "🌐 وب‌سایت‌ها\n"
@@ -61,8 +69,20 @@ class TelegramBot:
             "فقط کافیست لینک را بفرستید! 🚀"
         )
     
+    async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /ask <question> command."""
+        if not update.message:
+            return
+        question = " ".join(context.args or [])
+        if not question:
+            await update.message.reply_text(
+                "🧠 فرمت: `/ask سوال شما`\nمثلاً: `/ask بهترین مقاله درباره RAG چیست؟`"
+            )
+            return
+        await self._ask_rag(update, question)
+    
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming messages: links OR raw posts."""
+        """Handle incoming messages: links/raw posts (saved) OR questions (RAG /ask)."""
         if not update.message:
             return
         
@@ -71,13 +91,50 @@ class TelegramBot:
         if not text:
             return
         
+        # اگر پیام با /ask شروع شد یا /ask سوال آمد → RAG
+        if text.lower().startswith("/ask") or text.lower().startswith("سوال"):
+            question = re.sub(r"^/ask\s*", "", text, flags=re.IGNORECASE).strip()
+            question = re.sub(r"^سوال\s*", "", question, flags=re.IGNORECASE).strip()
+            if question:
+                await self._ask_rag(update, question)
+                return
+            await update.message.reply_text(
+                "🧠 فرمت: `/ask سوال شما`\nمثلاً: `/ask بهترین مقاله درباره RAG چیست؟`"
+            )
+            return
+        
         # پیدا کردن لینک t.me به عنوان «لینک پست» (اگه هست)
         tme_match = re.search(r'https?://t\.me/[^\s]+', text)
         post_url = tme_match.group(0) if tme_match else ""
         
-        # همیشه متن پست رو خلاصه می‌کنیم (نه اینکه بریم سراغ لینک داخلش)
-        # لینک‌های داخل متن توی خلاصه می‌مونن چون summarizer کل متن رو می‌بینه
-        await self._process_raw_post(update, text, post_url)
+        # لینک واقعی هست → پردازش/ذخیره
+        url = extract_first_url(text)
+        real_link = url and not url.startswith("https://t.me") and not url.startswith("http://t.me")
+        
+        if real_link and not post_url:
+            await self._process_link(update, url)
+            return
+        
+        # پست تلگرام (فوروارد یا متن با t.me) → ذخیره
+        if post_url or real_link or tme_match:
+            await self._process_raw_post(update, text, post_url)
+            return
+        
+        # هیچ لینکی نیست → سوال در نظر بگیر و RAG جواب بده
+        await self._ask_rag(update, text)
+    
+    async def _ask_rag(self, update: Update, question: str):
+        """RAG: retrieve from knowledge base and answer."""
+        processing = await update.message.reply_text("🧠 در حال جستجو در پایگاه دانش...")
+        try:
+            engine = RagEngine()
+            answer = await engine.ask(question)
+            await processing.edit_text(answer)
+        except Exception as e:
+            logger.error(f"RAG ask failed: {e}")
+            await processing.edit_text(
+                f"❌ **خطا در جستجوی دانش**\n\n`{str(e)[:200]}`"
+            )
     
     async def _process_link(self, update: Update, url: str):
         """پردازش لینک (استخراج + خلاصه + ذخیره)."""
@@ -102,6 +159,7 @@ class TelegramBot:
             await processing_msg.edit_text(f"📥 در حال استخراج محتوا از {platform}...")
             content = await extractor.extract(url)
             sqlite_store.save_content(content)
+            await self._embed_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
@@ -120,6 +178,29 @@ class TelegramBot:
                 "لطفاً دوباره تلاش کنید یا لینک دیگری بفرستید."
             )
     
+    async def _embed_content(self, content: ExtractedContent) -> None:
+        """Chunk + embed content into vector store (best-effort, non-blocking)."""
+        try:
+            text = content.full_text or content.title or ""
+            chunks = chunk_text(text)
+            if not chunks:
+                return
+            embedder = get_embedder()
+            vectors = await asyncio.to_thread(embedder.embed, chunks)
+            
+            # پیدا کردن content_id از URL
+            conn = sqlite_store._get_connection()
+            try:
+                row = conn.execute(
+                    "SELECT id FROM content WHERE url = ?", (content.url,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if row:
+                vector_store.store_chunks(row["id"], chunks, vectors)
+        except Exception as e:
+            logger.warning(f"Embedding failed (non-blocking): {e}")
+    
     async def _process_raw_post(self, update: Update, text: str, post_url: str = ""):
         """پردازش پست خام (مثل فوروارد تلگرام): متن پست رو خلاصه کن و لینک t.me رو به عنوان منبع نگه دار."""
         processing_msg = await update.message.reply_text(
@@ -135,6 +216,7 @@ class TelegramBot:
                 platform="telegram",
             )
             sqlite_store.save_content(content)
+            await self._embed_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
@@ -196,8 +278,12 @@ class TelegramBot:
         
         self.application = Application.builder().token(self.token).build()
         
+        # اطمینان از وجود جدول‌های برداری
+        vector_store.init_vector_tables()
+        
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.start))
+        self.application.add_handler(CommandHandler("ask", self.ask_command))
         self.application.add_handler(
             MessageHandler(
                 (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
