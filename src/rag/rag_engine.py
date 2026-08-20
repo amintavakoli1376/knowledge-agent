@@ -92,6 +92,12 @@ class RagEngine:
 
         fts_hits = fts_search(question)
 
+        # منبع اصلی: فقط نتایج برداری با امتیاز خوب (شباهت معنایی واقعی)
+        strong_hits = [h for h in vector_hits if h.get("score", 0) >= 0.45]
+        if not strong_hits:
+            strong_hits = vector_hits[:1]  # حداقل بهترین برداری
+
+        # متن غنی‌سازی: برداری + FTS (برای LLM، بدون امتیاز معنایی)
         merged = _dedupe(vector_hits + fts_hits)
         if not merged:
             return (
@@ -99,9 +105,9 @@ class RagEngine:
                 "💡 یه پست/لینک بفرست تا ذخیره کنم، بعد می‌تونم به سؤالاتت جواب بدم."
             )
 
-        # Build context
+        # Build context — فقط از منابع معنایی قوی
         context_parts = []
-        for i, hit in enumerate(merged, 1):
+        for i, hit in enumerate(strong_hits, 1):
             title = hit.get("title") or "بدون عنوان"
             url = hit.get("url") or ""
             summary = hit.get("summary_fa") or ""
@@ -125,7 +131,7 @@ class RagEngine:
 قوانین:
 - پاسخ را به فارسی روان بده.
 - اگر پاسخ در متن‌ها نبود، صادقانه بگو و حدس نزن.
-- در پایان، «منابع:» را با لینک‌های داکیومنت‌هایی که استفاده کردی بیاور (هر لینک در یک خط جدید)."""
+- **هیچ بخش «منابع» یا لیست لینک در پاسخ ننویس** — منابع جداگانه به کاربر نمایش داده می‌شود."""
 
         llm = self._get_llm()
         try:
@@ -143,17 +149,20 @@ class RagEngine:
             answer = ""
 
         sources = []
-        for hit in merged:
-            if hit.get("url"):
-                sources.append(hit["url"])
+        seen_urls = set()
+        for hit in strong_hits:
+            url = hit.get("url")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                sources.append(url)
 
         if answer:
             footer = "\n\n📎 **منابع:**\n" + "\n".join(f"- {u}" for u in sources) if sources else ""
             return answer.strip() + footer
 
-        # fallback: no LLM answer, show retrieved docs
+        # fallback: no LLM answer, show retrieved docs (فقط منابع معنایی قوی)
         lines = ["🔎 چیزی پیدا کردم ولی مدل جواب نداد. این‌ها مرتبط‌ترین‌ها هستن:\n"]
-        for hit in merged[:3]:
+        for hit in strong_hits[:3]:
             title = hit.get("title") or "بدون عنوان"
             url = hit.get("url") or ""
             lines.append(f"• {title} — {url}")
