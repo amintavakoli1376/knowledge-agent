@@ -1,5 +1,6 @@
 """Telegram Bot gateway."""
 import logging
+import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -13,6 +14,20 @@ from ..storage import sqlite_store
 from ..models import ExtractedContent
 
 logger = logging.getLogger(__name__)
+URL_REGEX = re.compile(r'(https?://[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?)')
+
+
+def extract_first_url(text: str) -> str | None:
+    """اولین لینک رو از متن استخراج می‌کنه (حتی اگه بدون http:// باشه)."""
+    if not text:
+        return None
+    m = URL_REGEX.search(text)
+    if not m:
+        return None
+    url = m.group(1)
+    if not url.startswith('http'):
+        url = 'https://' + url
+    return url.strip()
 
 
 class TelegramBot:
@@ -47,28 +62,30 @@ class TelegramBot:
         )
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming messages with URLs."""
-        if not update.message or not update.message.text:
+        """Handle incoming messages: links OR raw posts."""
+        if not update.message:
             return
         
-        text = update.message.text.strip()
-        
-        # Check if it's a URL
-        if not is_valid_url(text):
-            await update.message.reply_text(
-                "❌ لطفاً یک لینک معتبر بفرستید.\n"
-                "مثال: `https://arxiv.org/abs/2401.12345`"
-            )
+        # استخراج متن از پیام یا کپشن فوروارد
+        text = (update.message.text or update.message.caption or "").strip()
+        if not text:
             return
         
-        # Send initial processing message
+        # پیدا کردن لینک t.me به عنوان «لینک پست» (اگه هست)
+        tme_match = re.search(r'https?://t\.me/[^\s]+', text)
+        post_url = tme_match.group(0) if tme_match else ""
+        
+        # همیشه متن پست رو خلاصه می‌کنیم (نه اینکه بریم سراغ لینک داخلش)
+        # لینک‌های داخل متن توی خلاصه می‌مونن چون summarizer کل متن رو می‌بینه
+        await self._process_raw_post(update, text, post_url)
+    
+    async def _process_link(self, update: Update, url: str):
+        """پردازش لینک (استخراج + خلاصه + ذخیره)."""
         processing_msg = await update.message.reply_text(
             "⏳ در حال پردازش لینک شما..."
         )
-        
         try:
-            # Detect platform
-            platform = detect_platform(text)
+            platform = detect_platform(url)
             platform_emoji = {
                 'arxiv': '📄', 'youtube': '🎥', 'twitter': '🐦',
                 'linkedin': '💼', 'instagram': '📸', 'github': '💻',
@@ -80,33 +97,19 @@ class TelegramBot:
                 f"{emoji} **تشخیص:** {platform.capitalize()}\n📥 در حال استخراج محتوا..."
             )
             
-            # Select extractor
-            if platform in self.extractors:
-                extractor = self.extractors[platform]
-            elif platform == 'website':
-                extractor = self.extractors.get('website')
-            else:
-                extractor = self.extractors.get('website')
+            extractor = self.extractors.get(platform) or self.extractors.get('website')
             
-            # Step 1: Extract
             await processing_msg.edit_text(f"📥 در حال استخراج محتوا از {platform}...")
-            content = await extractor.extract(text)
-            
-            # Step 1.5: Store full text in SQLite (best-effort, for future RAG)
+            content = await extractor.extract(url)
             sqlite_store.save_content(content)
             
-            # Step 2: Summarize
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self.summarizer.analyze(content)
-
-            # Step 2.5: Update SQLite row with AI analysis fields
-            sqlite_store.save_analysis(text, analysis)
+            sqlite_store.save_analysis(url, analysis)
             
-            # Step 3: Save to Notion
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
             
-            # Step 4: Send result
             await self._send_result(update, content, analysis, notion_url)
             
         except Exception as e:
@@ -115,6 +118,38 @@ class TelegramBot:
                 f"❌ **خطا در پردازش لینک**\n\n"
                 f"`{str(e)[:200]}`\n\n"
                 "لطفاً دوباره تلاش کنید یا لینک دیگری بفرستید."
+            )
+    
+    async def _process_raw_post(self, update: Update, text: str, post_url: str = ""):
+        """پردازش پست خام (مثل فوروارد تلگرام): متن پست رو خلاصه کن و لینک t.me رو به عنوان منبع نگه دار."""
+        processing_msg = await update.message.reply_text(
+            "⏳ در حال تحلیل پست شما..."
+        )
+        try:
+            # متن پست رو مستقیم به عنوان محتوا می‌دیم (نه لینک داخلش)
+            # لینک‌های داخل متن توی خلاصه می‌مونن چون summarizer کل متن رو می‌بینه
+            content = ExtractedContent(
+                url=post_url,  # لینک t.me به عنوان لینک پست
+                title=text[:80],
+                full_text=text,
+                platform="telegram",
+            )
+            sqlite_store.save_content(content)
+            
+            await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
+            analysis = await self.summarizer.analyze(content)
+            sqlite_store.save_analysis(post_url or text, analysis)
+            
+            await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
+            notion_url = await self.storage.save(content, analysis)
+            
+            await self._send_result(update, content, analysis, notion_url)
+            
+        except Exception as e:
+            logger.error(f"Error processing raw post: {e}")
+            await processing_msg.edit_text(
+                f"❌ **خطا در پردازش پست**\n\n"
+                f"`{str(e)[:200]}`"
             )
     
     async def _send_result(self, update: Update, content: ExtractedContent, 
@@ -163,7 +198,12 @@ class TelegramBot:
         
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.start))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        self.application.add_handler(
+            MessageHandler(
+                (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
+                self.handle_message
+            )
+        )
         
         await self.application.initialize()
         await self.application.start()
