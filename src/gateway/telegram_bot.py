@@ -3,7 +3,7 @@ import asyncio
 import logging
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 from ..config import settings
 from ..utils.url_parser import detect_platform, is_valid_url
@@ -50,25 +50,48 @@ class TelegramBot:
         self.extractors = extractors
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command."""
+        """Handle /start command with inline mode buttons."""
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")],
+            [InlineKeyboardButton("💾 ذخیره مطلب", callback_data="mode:save")],
+        ])
         await update.message.reply_text(
             "👋 **به دستیار دانش خوش آمدید!**\n\n"
-            "هر لینکی بفرستید تا خلاصه‌سازی و در Notion ذخیره شود.\n\n"
-            "🧠 برای جستجو در دانش، بنویسید:\n"
-            "`/ask سوال شما`\n"
-            "یا مستقیم سوال بپرسید (مثلاً: «بهترین مقاله درباره RAG چیست؟»)\n\n"
-            "🚀 **پلتفرم‌های پشتیبانی‌شده:**\n"
-            "📄 ArXiv\n"
-            "🌐 وب‌سایت‌ها\n"
-            "🎥 YouTube\n"
-            "🐦 X / Twitter\n"
-            "📸 اینستاگرام\n"
-            "💼 لینکدین\n"
-            "💬 کانال تلگرام\n"
-            "📎 فایل PDF\n\n"
-            "فقط کافیست لینک را بفرستید! 🚀"
+            "یکی از حالت‌ها را انتخاب کنید:\n\n"
+            "🧠 **گفتگو با دانش** — سؤالتان را بپرسید، از پایگاه دانش جواب می‌گیرید.\n"
+            "💾 **ذخیره مطلب** — لینک یا پست بفرستید تا خلاصه و در Notion ذخیره شود.\n\n"
+            "بعد از انتخاب، هر پیامی که بفرستید در همان حالت پردازش می‌شود.",
+            reply_markup=keyboard,
         )
-    
+
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle inline keyboard button presses (mode selection)."""
+        query = update.callback_query
+        if not query:
+            return
+        await query.answer()
+
+        data = query.data or ""
+        user_id = query.from_user.id if query.from_user else None
+
+        if data == "mode:ask":
+            if user_id is not None:
+                context.user_data["mode"] = "ask"
+            await query.edit_message_text(
+                "🧠 **حالت گفتگو با دانش فعال شد**\n\n"
+                "سؤالتان را بنویسید — از پایگاه دانش جواب می‌گیرید.\n"
+                "مثلاً: «بهترین مقاله درباره RAG چیست؟»\n\n"
+                "برای بازگشت به منو: /start"
+            )
+        elif data == "mode:save":
+            if user_id is not None:
+                context.user_data["mode"] = "save"
+            await query.edit_message_text(
+                "💾 **حالت ذخیره مطلب فعال شد**\n\n"
+                "لینک یا پست تلگرام بفرستید تا خلاصه‌سازی و ذخیره شود.\n"
+                "برای بازگشت به منو: /start"
+            )
+
     async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /ask <question> command."""
         if not update.message:
@@ -91,16 +114,21 @@ class TelegramBot:
         if not text:
             return
         
-        # اگر پیام با /ask شروع شد یا /ask سوال آمد → RAG
-        if text.lower().startswith("/ask") or text.lower().startswith("سوال"):
+        # اگر پیام با /ask شروع شد → RAG
+        if text.lower().startswith("/ask"):
             question = re.sub(r"^/ask\s*", "", text, flags=re.IGNORECASE).strip()
-            question = re.sub(r"^سوال\s*", "", question, flags=re.IGNORECASE).strip()
             if question:
                 await self._ask_rag(update, question)
                 return
             await update.message.reply_text(
                 "🧠 فرمت: `/ask سوال شما`\nمثلاً: `/ask بهترین مقاله درباره RAG چیست؟`"
             )
+            return
+        
+        # اگر کاربر حالت "ask" را انتخاب کرده → سوال در نظر بگیر
+        mode = context.user_data.get("mode")
+        if mode == "ask":
+            await self._ask_rag(update, text)
             return
         
         # پیدا کردن لینک t.me به عنوان «لینک پست» (اگه هست)
@@ -112,6 +140,7 @@ class TelegramBot:
         real_link = url and not url.startswith("https://t.me") and not url.startswith("http://t.me")
         
         if real_link and not post_url:
+            # ذخیره
             await self._process_link(update, url)
             return
         
@@ -120,8 +149,13 @@ class TelegramBot:
             await self._process_raw_post(update, text, post_url)
             return
         
-        # هیچ لینکی نیست → سوال در نظر بگیر و RAG جواب بده
-        await self._ask_rag(update, text)
+        # هیچ لینکی نیست:
+        # - اگر حالت "save" انتخاب شده → به عنوان متن ذخیره کن
+        # - وگرنه پیش‌فرض: سوال RAG
+        if mode == "save":
+            await self._process_raw_post(update, text, "")
+        else:
+            await self._ask_rag(update, text)
     
     async def _ask_rag(self, update: Update, question: str):
         """RAG: retrieve from knowledge base and answer."""
@@ -284,6 +318,7 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.start))
         self.application.add_handler(CommandHandler("ask", self.ask_command))
+        self.application.add_handler(CallbackQueryHandler(self.button_callback))
         self.application.add_handler(
             MessageHandler(
                 (filters.TEXT | filters.CAPTION) & ~filters.COMMAND,
