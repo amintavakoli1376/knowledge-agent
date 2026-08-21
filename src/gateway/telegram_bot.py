@@ -432,17 +432,24 @@ class TelegramBot:
             message += f"🏷️ {tags_text}\n\n"
         
         if notion_url:
-            keyboard = InlineKeyboardMarkup([
+            kb_rows = [
                 [InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)],
-                [InlineKeyboardButton("🔗 لینک اصلی", url=content.url)],
-                [InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")],
-                [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")],
-            ])
+            ]
+            if content.url:
+                kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
+            kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
+            kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
+            keyboard = InlineKeyboardMarkup(kb_rows)
             await update.message.reply_text(message, reply_markup=keyboard)
         else:
+            kb_rows = []
+            if content.url:
+                kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
+            kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
+            kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
             await update.message.reply_text(
-                message + "\n*(Notion API not configured)*",
-                reply_markup=self._back_to_menu_keyboard(),
+                message + "\n*(Notion API not configured)*" if not notion_url else message,
+                reply_markup=InlineKeyboardMarkup(kb_rows),
             )
     
     async def setup(self):
