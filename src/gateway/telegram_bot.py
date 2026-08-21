@@ -338,7 +338,19 @@ class TelegramBot:
             if not full_text.strip():
                 raise ValueError("این PDF متنی استخراج‌شدنی ندارد (شاید اسکن‌شده باشد).")
 
-            title = title or file_name.replace(".pdf", "").replace("_", " ")[:100]
+            # تشخیص عنوان خراب (encoding فارسی) → استفاده از اسم فایل
+            def _is_garbled(t: str) -> bool:
+                if not t or len(t) < 3:
+                    return True
+                has_arabic = any(0x0600 <= ord(c) <= 0x06FF for c in t)
+                has_cyrillic = any(0x0400 <= ord(c) <= 0x04FF for c in t)
+                # اگه فارسی و سیریلیک هر دو باشن → خرابه
+                if has_arabic and has_cyrillic:
+                    return True
+                return False
+
+            if not title or len(title) < 5 or _is_garbled(title):
+                title = file_name.replace(".pdf", "").replace("_", " ")[:100]
 
             content = ExtractedContent(
                 url=f"file://{file_name}",
