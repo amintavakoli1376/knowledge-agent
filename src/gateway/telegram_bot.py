@@ -88,7 +88,7 @@ class TelegramBot:
         if data == "mode:ask":
             if user_id is not None:
                 context.user_data["mode"] = "ask"
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "🧠 **حالت گفتگو با دانش فعال شد**\n\n"
                 "سؤالتان را بنویسید — از پایگاه دانش جواب می‌گیرید.\n"
                 "مثلاً: «بهترین مقاله درباره RAG چیست؟»\n\n"
@@ -98,7 +98,7 @@ class TelegramBot:
         elif data == "mode:save":
             if user_id is not None:
                 context.user_data["mode"] = "save"
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "💾 **حالت ذخیره مطلب فعال شد**\n\n"
                 "لینک یا پست تلگرام بفرستید تا خلاصه‌سازی و ذخیره شود.\n\n"
                 "🔙 برای بازگشت به منو، دکمه پایین را بزنید.",
@@ -108,7 +108,7 @@ class TelegramBot:
             # بازگشت به منوی اصلی — حالت فعلی پاک می‌شود
             if user_id is not None:
                 context.user_data.pop("mode", None)
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "👋 **به دستیار دانش خوش آمدید!**\n\n"
                 "یکی از حالت‌ها را انتخاب کنید:\n\n"
                 "🧠 **گفتگو با دانش** — سؤالتان را بپرسید، از پایگاه دانش جواب می‌گیرید.\n"
