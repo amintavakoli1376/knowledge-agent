@@ -25,12 +25,21 @@ class Embedder:
         return self._model
 
     def embed(self, texts):
-        """Return list of normalized embeddings (float lists)."""
+        """Return list of normalized embeddings (float lists).
+        
+        Model is loaded on first use and unloaded after to save RAM.
+        """
         if not texts:
             return []
+        import gc
         model = self._load()
         emb = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
-        return [np.asarray(e, dtype="float32").tolist() for e in emb]
+        result = [np.asarray(e, dtype="float32").tolist() for e in emb]
+        # آزادسازی رم بعد از استفاده
+        del model
+        self._model = None
+        gc.collect()
+        return result
 
     def embed_one(self, text: str):
         result = self.embed([text])
