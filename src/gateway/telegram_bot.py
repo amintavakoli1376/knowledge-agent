@@ -341,7 +341,7 @@ class TelegramBot:
             title = title or file_name.replace(".pdf", "").replace("_", " ")[:100]
 
             content = ExtractedContent(
-                url=f"telegram-file://{file_name}",
+                url="",
                 title=title,
                 full_text=full_text[:10000],
                 platform="pdf",
