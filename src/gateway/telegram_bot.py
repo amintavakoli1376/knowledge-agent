@@ -341,7 +341,7 @@ class TelegramBot:
             title = title or file_name.replace(".pdf", "").replace("_", " ")[:100]
 
             content = ExtractedContent(
-                url="",
+                url=f"file://{file_name}",
                 title=title,
                 full_text=full_text[:10000],
                 platform="pdf",
@@ -435,7 +435,7 @@ class TelegramBot:
             kb_rows = [
                 [InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)],
             ]
-            if content.url:
+            if content.url and content.url.startswith("http"):
                 kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
             kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
             kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
@@ -443,7 +443,7 @@ class TelegramBot:
             await update.message.reply_text(message, reply_markup=keyboard)
         else:
             kb_rows = []
-            if content.url:
+            if content.url and content.url.startswith("http"):
                 kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
             kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
             kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
