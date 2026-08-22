@@ -32,13 +32,22 @@ class Embedder:
         if not texts:
             return []
         import gc
+        import torch
         model = self._load()
         emb = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         result = [np.asarray(e, dtype="float32").tolist() for e in emb]
-        # آزادسازی رم بعد از استفاده
+        # آزادسازی کامل رم (شامل PyTorch cache)
         del model
         self._model = None
         gc.collect()
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        # پاکسازی internal cache sentence-transformers
+        try:
+            from sentence_transformers import SentenceTransformer
+            SentenceTransformer._model_cache = {}
+        except:
+            pass
         return result
 
     def embed_one(self, text: str):
