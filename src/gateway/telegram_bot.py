@@ -144,6 +144,22 @@ class TelegramBot:
         if not text:
             return
         
+        # اگر پیام فوروارد شده از کانال/گروه → لینک t.me بساز از متادیتا
+        # (python-telegram-bot v20+: فیلدهای forward_* با forward_origin جایگزین شدن)
+        post_url = ""
+        origin = getattr(update.message, "forward_origin", None)
+        if origin is not None and hasattr(origin, "chat") and getattr(origin, "message_id", None):
+            chat = origin.chat
+            username = getattr(chat, "username", None)
+            if username:
+                post_url = f"https://t.me/{username}/{origin.message_id}"
+            elif chat and chat.id:
+                # کانال خصوصی (بدون username): لینک داخلی t.me/c/
+                channel_id = str(abs(chat.id))
+                if channel_id.startswith("100"):
+                    channel_id = channel_id[3:]  # حذف پیشوند -100 کانال‌ها
+                post_url = f"https://t.me/c/{channel_id}/{origin.message_id}"
+        
         # اگر پیام با /ask شروع شد → RAG
         if text.lower().startswith("/ask"):
             question = re.sub(r"^/ask\s*", "", text, flags=re.IGNORECASE).strip()
@@ -161,22 +177,20 @@ class TelegramBot:
             await self._ask_rag(update, text)
             return
         
-        # پیدا کردن لینک t.me به عنوان «لینک پست» (اگه هست)
+        # پیدا کردن لینک t.me در متن (برای لینک‌های دستی)
         tme_match = re.search(r'https?://t\.me/[^\s]+', text)
-        post_url = tme_match.group(0) if tme_match else ""
+        if tme_match and not post_url:
+            post_url = tme_match.group(0)
         
-        # لینک واقعی هست → پردازش/ذخیره
-        url = extract_first_url(text)
-        real_link = url and not url.startswith("https://t.me") and not url.startswith("http://t.me")
-        
-        if real_link and not post_url:
-            # ذخیره
-            await self._process_link(update, url)
+        # اگر پست تلگرام هست (دارای t.me از فوروارد یا متن) → همیشه به عنوان پست پردازش کن
+        if post_url:
+            await self._process_raw_post(update, text, post_url)
             return
         
-        # پست تلگرام (فوروارد یا متن با t.me) → ذخیره
-        if post_url or real_link or tme_match:
-            await self._process_raw_post(update, text, post_url)
+        # لینک واقعی هست (بدون t.me) → پردازش/ذخیره
+        url = extract_first_url(text)
+        if url and self._is_valid_url(url):
+            await self._process_link(update, url)
             return
         
         # هیچ لینکی نیست:
@@ -416,13 +430,24 @@ class TelegramBot:
                 f"`{str(e)[:200]}`"
             )
     
+    @staticmethod
+    def _is_valid_url(url: str) -> bool:
+        """Validate URL format - reject malformed URLs like https://github."""
+        if not url or not url.startswith("http"):
+            return False
+        # Basic validation: must have domain with TLD
+        import re
+        # Match http(s)://domain.tld/... 
+        pattern = r'^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/.*)?$'
+        return bool(re.match(pattern, url))
+
     async def _send_result(self, update: Update, content: ExtractedContent, 
                           analysis, notion_url: str):
         """Send formatted result to user."""
         platform_emoji = {
             'arxiv': '📄', 'website': '🌐', 'youtube': '🎥',
             'twitter': '🐦', 'linkedin': '💼', 'instagram': '📸',
-            'github': '💻', 'medium': '✍️'
+            'github': '💻', 'medium': '✍️', 'telegram': '💬'
         }
         emoji = platform_emoji.get(content.platform, '🔗')
         
@@ -443,26 +468,25 @@ class TelegramBot:
         if tags_text:
             message += f"🏷️ {tags_text}\n\n"
         
-        if notion_url:
-            kb_rows = [
-                [InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)],
-            ]
-            if content.url and content.url.startswith("http"):
-                kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
-            kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
-            kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
-            keyboard = InlineKeyboardMarkup(kb_rows)
-            await update.message.reply_text(message, reply_markup=keyboard)
-        else:
-            kb_rows = []
-            if content.url and content.url.startswith("http"):
-                kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
-            kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
-            kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
-            await update.message.reply_text(
-                message + "\n*(Notion API not configured)*" if not notion_url else message,
-                reply_markup=InlineKeyboardMarkup(kb_rows),
-            )
+        # Build keyboard - only add valid URLs as buttons
+        kb_rows = []
+        
+        # Notion link (always valid if present)
+        if notion_url and self._is_valid_url(notion_url):
+            kb_rows.append([InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)])
+        
+        # Original link button - ONLY for non-telegram posts with valid URL
+        # For telegram posts, the t.me link is the post itself, not a "source link"
+        # Links inside the post content stay in the summary text only
+        if content.url and content.platform != "telegram" and self._is_valid_url(content.url):
+            kb_rows.append([InlineKeyboardButton("🔗 لینک اصلی", url=content.url)])
+        
+        # Always add mode buttons
+        kb_rows.append([InlineKeyboardButton("🧠 گفتگو با دانش", callback_data="mode:ask")])
+        kb_rows.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="menu:main")])
+        
+        keyboard = InlineKeyboardMarkup(kb_rows)
+        await update.message.reply_text(message, reply_markup=keyboard)
     
     async def setup(self):
         """Set up the Telegram bot application with polling."""
