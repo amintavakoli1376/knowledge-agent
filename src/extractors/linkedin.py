@@ -61,10 +61,19 @@ class LinkedInExtractor(BaseExtractor):
                         metadata={'method': 'brightdata'}
                     )
             
-            # 3. Fallback: text from URL
+            # 3. Fallback: text from URL — if even that yields nothing, ALL
+            # methods failed (deleted post, private, group post behind auth).
+            # Raise — never return a placeholder as if it were content
+            # (placeholders were summarized and saved to Notion as success).
             text_from_url = self._extract_text_from_url(url)
-            full_text = text_from_url or "LinkedIn post content unavailable."
-            
+            if not text_from_url or len(text_from_url.strip()) < 30:
+                raise ExtractionError(
+                    "LinkedIn post content could not be extracted — the post may be "
+                    "deleted, private, or a group post behind authentication.",
+                    url=url,
+                )
+            full_text = text_from_url
+
             return ExtractedContent(
                 title=self._generate_title(full_text),
                 full_text=full_text[:8000],

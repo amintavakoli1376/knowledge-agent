@@ -7,7 +7,7 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -124,12 +124,7 @@ class InstagramExtractor(BaseExtractor):
             )
             
         except Exception as e:
-            return ExtractedContent(
-                title=f"Instagram post ({shortcode})",
-                full_text=f"Instagram content temporarily unavailable.",
-                url=url, platform='instagram',
-                metadata={'shortcode': shortcode, 'error': str(e)}
-            )
+            raise ExtractionError(f"Instagram content unavailable: {str(e)}", url=url) from e
         finally:
             for f in temp_files:
                 try:
