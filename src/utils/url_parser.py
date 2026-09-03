@@ -5,7 +5,7 @@ from typing import Optional
 
 PLATFORM_PATTERNS = {
     'instagram': r'(?:https?://)?(?:www\.)?instagram\.com/',
-    'linkedin': r'(?:https?://)?(?:www\.)?linkedin\.com/',
+    'linkedin': r'(?:https?://)?(?:www\.)?(?:linkedin\.com|lnkd\.in)/',
     'twitter': r'(?:https?://)?(?:www\.)?(?:twitter|x)\.com/',
     'youtube': r'(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be)/',
     'arxiv': r'(?:https?://)?(?:www\.)?arxiv\.org/',

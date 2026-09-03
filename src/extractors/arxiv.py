@@ -3,7 +3,7 @@ import arxiv
 from typing import Optional
 import re
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -18,13 +18,7 @@ class ArxivExtractor(BaseExtractor):
             # Extract paper ID from URL
             paper_id = self._extract_id(url)
             if not paper_id:
-                return ExtractedContent(
-                    title="Invalid ArXiv URL",
-                    full_text="Could not extract paper ID from URL.",
-                    url=url,
-                    platform='arxiv',
-                    metadata={'error': 'Invalid URL'}
-                )
+                raise ExtractionError("Could not extract paper ID from URL.", url=url)
             
             # Search for the paper
             search = arxiv.Search(id_list=[paper_id], max_results=1)
@@ -58,13 +52,7 @@ class ArxivExtractor(BaseExtractor):
                 }
             )
         except Exception as e:
-            return ExtractedContent(
-                title=f"ArXiv Error: {url}",
-                full_text=f"Failed to extract paper: {str(e)}",
-                url=url,
-                platform='arxiv',
-                metadata={'error': str(e)}
-            )
+            raise ExtractionError(f"Failed to extract paper: {str(e)}", url=url) from e
     
     def _extract_id(self, url: str) -> Optional[str]:
         """Extract ArXiv paper ID from various URL formats."""

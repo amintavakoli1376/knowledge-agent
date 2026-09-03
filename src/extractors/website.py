@@ -3,7 +3,7 @@ import httpx
 from bs4 import BeautifulSoup
 from typing import Optional
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 from ..utils.url_parser import detect_platform
 
@@ -72,13 +72,7 @@ class WebsiteExtractor(BaseExtractor):
                 }
             )
         except Exception as e:
-            return ExtractedContent(
-                title=f"Error: {url}",
-                full_text=f"Failed to extract content: {str(e)}",
-                url=url,
-                platform='website',
-                metadata={'error': str(e)}
-            )
+            raise ExtractionError(f"Failed to extract content: {str(e)}", url=url) from e
     
     def _clean_text(self, text: str) -> str:
         """Clean extracted text."""

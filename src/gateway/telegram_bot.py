@@ -8,6 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 
 from ..config import settings
 from ..utils.url_parser import detect_platform, is_valid_url
+from ..extractors.base import ExtractionError
 from ..extractors.website import WebsiteExtractor
 from ..extractors.arxiv import ArxivExtractor
 from ..processors.summarizer import ContentSummarizer
@@ -275,6 +276,13 @@ class TelegramBot:
             # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
             asyncio.create_task(self._embed_content(content))
             
+        except ExtractionError as e:
+            logger.error(f"Extraction failed for {e.url}: {e}")
+            await processing_msg.edit_text(
+                f"❌ **محتوا استخراج نشد**\n\n"
+                f"این لینک قابل خواندن نیست (احتمالاً نیاز به لاگین داره یا پست حذف شده).\n\n"
+                f"`{str(e)[:200]}`"
+            )
         except Exception as e:
             logger.error(f"Error processing link: {e}")
             await processing_msg.edit_text(

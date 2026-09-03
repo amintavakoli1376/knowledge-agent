@@ -9,7 +9,7 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 from ..config import settings
 
@@ -18,7 +18,7 @@ class LinkedInExtractor(BaseExtractor):
     """Extract content from LinkedIn posts."""
     
     def can_handle(self, url: str) -> bool:
-        return bool(re.search(r'linkedin\.com/', url, re.IGNORECASE))
+        return bool(re.search(r'(?:linkedin\.com|lnkd\.in)/', url, re.IGNORECASE))
     
     async def extract(self, url: str) -> ExtractedContent:
         """Extract content from a LinkedIn post URL."""
@@ -74,12 +74,7 @@ class LinkedInExtractor(BaseExtractor):
                 metadata={'method': 'url-fallback'}
             )
         except Exception as e:
-            return ExtractedContent(
-                title=f"LinkedIn Error",
-                full_text=f"Could not extract LinkedIn post: {str(e)}",
-                url=url, platform='linkedin',
-                metadata={'error': str(e)}
-            )
+            raise ExtractionError(f"Could not extract LinkedIn post: {str(e)}", url=url) from e
     
     async def _extract_from_embed(self, url: str) -> Optional[str]:
         """Extract post content from LinkedIn's public embed endpoint."""

@@ -3,7 +3,7 @@ import re
 from typing import Optional
 import httpx
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -40,12 +40,7 @@ class TwitterExtractor(BaseExtractor):
                 }
             )
         except Exception as e:
-            return ExtractedContent(
-                title="Twitter/X Post",
-                full_text=f"Could not extract tweet: {str(e)}",
-                url=url, platform='twitter',
-                metadata={'error': str(e)}
-            )
+            raise ExtractionError(f"Could not extract tweet: {str(e)}", url=url) from e
     
     def _extract_tweet_id(self, url: str) -> Optional[str]:
         match = re.search(r'(?:twitter|x)\.com/\w+/status/(\d+)', url)

@@ -8,7 +8,7 @@ import json
 from typing import Optional
 import httpx
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -27,12 +27,7 @@ class YouTubeExtractor(BaseExtractor):
     async def extract(self, url: str) -> ExtractedContent:
         video_id = self._extract_video_id(url)
         if not video_id:
-            return ExtractedContent(
-                title="Invalid YouTube URL",
-                full_text="Could not extract video ID from URL.",
-                url=url, platform='youtube',
-                metadata={'error': 'Invalid URL'}
-            )
+            raise ExtractionError("Could not extract video ID from URL.", url=url)
         
         try:
             # Get metadata via oEmbed API (no API key needed)
@@ -69,12 +64,7 @@ class YouTubeExtractor(BaseExtractor):
                 }
             )
         except Exception as e:
-            return ExtractedContent(
-                title=f"YouTube Error: {video_id}",
-                full_text=f"Failed to extract video: {str(e)}",
-                url=url, platform='youtube',
-                metadata={'error': str(e), 'video_id': video_id}
-            )
+            raise ExtractionError(f"Failed to extract video: {str(e)}", url=url) from e
     
     def _extract_video_id(self, url: str) -> Optional[str]:
         """Extract YouTube video ID from various URL formats."""

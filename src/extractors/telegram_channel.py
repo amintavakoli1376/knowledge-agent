@@ -4,7 +4,7 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -39,12 +39,7 @@ class TelegramChannelExtractor(BaseExtractor):
                 metadata={}
             )
         except Exception as e:
-            return ExtractedContent(
-                title="Telegram Post",
-                full_text=f"Could not extract: {str(e)}",
-                url=url, platform='telegram',
-                metadata={'error': str(e)}
-            )
+            raise ExtractionError(f"Could not extract: {str(e)}", url=url) from e
     
     async def _scrape_tme(self, url: str) -> tuple:
         """Scrape the t.me preview page for content."""

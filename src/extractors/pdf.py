@@ -8,7 +8,7 @@ import httpx
 import tempfile
 from typing import Optional
 
-from .base import BaseExtractor
+from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
 
 
@@ -84,10 +84,5 @@ class PDFExtractor(BaseExtractor):
             # Clean up temp file if exists
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
-            
-            return ExtractedContent(
-                title="PDF Error",
-                full_text=f"Could not extract PDF: {str(e)}",
-                url=url, platform='pdf',
-                metadata={'error': str(e)}
-            )
+
+            raise ExtractionError(f"Could not extract PDF: {str(e)}", url=url) from e
