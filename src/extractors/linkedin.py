@@ -3,6 +3,7 @@
 Extracts post text and metadata from LinkedIn posts.
 Uses LinkedIn's public embed endpoint (works without login).
 """
+import json
 import re
 from typing import Optional
 
@@ -23,8 +24,27 @@ class LinkedInExtractor(BaseExtractor):
     async def extract(self, url: str) -> ExtractedContent:
         """Extract content from a LinkedIn post URL."""
         try:
-            # 0. Try document transcript first (full PDF/PPT text, no login)
-            doc_result = await self._extract_document_transcript(url)
+            # 0. Expand short links (lnkd.in) FIRST — every downstream method
+            # (embed regex, /posts/ URL fallback) needs the real /posts/ URL.
+            fetch_url = await self._unshorten(url) if 'lnkd.in' in url else url
+
+            # 1. NEW primary: page ld+json / meta description. LinkedIn embeds
+            # the full post text as articleBody in application/ld+json even
+            # behind the authwall — no login, no third-party, ~1 request.
+            page_result = await self._extract_from_page(fetch_url)
+            if page_result:
+                text, author = page_result
+                return ExtractedContent(
+                    title=self._generate_title(text),
+                    full_text=text[:8000],
+                    url=url,
+                    platform='linkedin',
+                    author=author,
+                    metadata={'method': 'page-ldjson'}
+                )
+
+            # 2. Try document transcript next (full PDF/PPT text, no login)
+            doc_result = await self._extract_document_transcript(fetch_url)
             if doc_result:
                 doc_text, author = doc_result
                 return ExtractedContent(
@@ -36,36 +56,36 @@ class LinkedInExtractor(BaseExtractor):
                     metadata={'method': 'document-transcript'}
                 )
 
-            # 1. Try the public embed endpoint next (no login required)
-            embed_text = await self._extract_from_embed(url)
+            # 3. Try the public embed endpoint (may be dead — kept as fallback)
+            embed_text = await self._extract_from_embed(fetch_url)
             if embed_text:
                 return ExtractedContent(
                     title=self._generate_title(embed_text),
                     full_text=embed_text[:8000],
                     url=url,
                     platform='linkedin',
-                    author=self._author_from_url(url),
+                    author=self._author_from_url(fetch_url),
                     metadata={'method': 'embed'}
                 )
-            
-            # 2. Bright Data Web Unlocker (اگر کلید تنظیم شده باشه)
+
+            # 4. Bright Data Web Unlocker (اگر کلید تنظیم شده باشه)
             if settings.brightdata_key:
-                bd_text = await self._extract_via_brightdata(url)
+                bd_text = await self._extract_via_brightdata(fetch_url)
                 if bd_text:
                     return ExtractedContent(
                         title=self._generate_title(bd_text),
                         full_text=bd_text[:8000],
                         url=url,
                         platform='linkedin',
-                        author=self._author_from_url(url),
+                        author=self._author_from_url(fetch_url),
                         metadata={'method': 'brightdata'}
                     )
-            
-            # 3. Fallback: text from URL — if even that yields nothing, ALL
+
+            # 5. Fallback: text from URL — if even that yields nothing, ALL
             # methods failed (deleted post, private, group post behind auth).
             # Raise — never return a placeholder as if it were content
             # (placeholders were summarized and saved to Notion as success).
-            text_from_url = self._extract_text_from_url(url)
+            text_from_url = self._extract_text_from_url(fetch_url)
             if not text_from_url or len(text_from_url.strip()) < 30:
                 raise ExtractionError(
                     "LinkedIn post content could not be extracted — the post may be "
@@ -79,11 +99,122 @@ class LinkedInExtractor(BaseExtractor):
                 full_text=full_text[:8000],
                 url=url,
                 platform='linkedin',
-                author=self._author_from_url(url),
+                author=self._author_from_url(fetch_url),
                 metadata={'method': 'url-fallback'}
             )
         except Exception as e:
             raise ExtractionError(f"Could not extract LinkedIn post: {str(e)}", url=url) from e
+
+    async def _unshorten(self, url: str) -> str:
+        """Follow lnkd.in redirects to the canonical post URL."""
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                )
+                final = str(resp.url)
+                if final.startswith('http'):
+                    return final
+        except Exception:
+            pass
+        return url
+
+    async def _extract_from_page(self, url: str) -> Optional[tuple]:
+        """Fetch the post page and pull text from application/ld+json.
+
+        LinkedIn keeps the full post body as ``articleBody`` in the JSON-LD
+        block that ships with the page HTML — present even when the visible
+        surface is an authwall. Fall back to og:description when absent.
+        Returns (text, author) or None.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+                resp = await client.get(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                )
+                if resp.status_code != 200:
+                    return None
+                html = resp.text
+        except Exception:
+            return None
+
+        # 1) ld+json — walk every block for articleBody / headline
+        for block in re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.S):
+            try:
+                data = json.loads(block)
+            except Exception:
+                continue
+            found = self._find_json_text(data, ('articleBody', 'headline', 'description'))
+            if found and len(found.strip()) > 30:
+                author = self._author_from_ldjson(data) or self._author_from_html(html) \
+                    or self._author_from_url(url)
+                return found.strip()[:8000], author
+
+        # 2) meta og:description / description fallback (skip LinkedIn boilerplate)
+        m = re.search(r'<meta property="og:description" content="([^"]*)"', html) \
+            or re.search(r'<meta name="description" content="([^"]*)"', html)
+        if m:
+            content = m.group(1).strip()
+            boilerplate = ('linkedin and 3rd parties', 'cookie policy')
+            if len(content) > 30 and not content.lower().startswith(boilerplate):
+                author = self._author_from_html(html) or self._author_from_url(url)
+                return content[:8000], author
+
+        return None
+
+    @staticmethod
+    def _find_json_text(obj, keys: tuple) -> Optional[str]:
+        """Depth-first search of parsed JSON-LD for the first long string under a wanted key."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k in keys and isinstance(v, str) and len(v.strip()) > 30:
+                    return v.strip()
+                r = LinkedInExtractor._find_json_text(v, keys)
+                if r:
+                    return r
+        elif isinstance(obj, list):
+            for item in obj:
+                r = LinkedInExtractor._find_json_text(item, keys)
+                if r:
+                    return r
+        return None
+
+    @staticmethod
+    def _author_from_ldjson(data) -> Optional[str]:
+        """Author display name from the ld+json block.
+
+        The root SocialMediaPosting object carries ``author`` =
+        {"@type":"Person","name":...}; commenters are nested under
+        ``comment`` with their own Person objects. Check the root's own
+        author FIRST so we never report a commenter as the author.
+        """
+        if isinstance(data, dict):
+            auth = data.get('author')
+            if isinstance(auth, dict) and isinstance(auth.get('name'), str):
+                return auth['name']
+            if isinstance(auth, list) and auth:
+                first = auth[0]
+                if isinstance(first, dict) and isinstance(first.get('name'), str):
+                    return first['name']
+
+        # Fallback: first @type=Person with a name anywhere in the tree
+        author = None
+
+        def walk(x):
+            nonlocal author
+            if isinstance(x, dict):
+                if author is None and x.get('@type') == 'Person' and isinstance(x.get('name'), str):
+                    author = x['name']
+                for v in x.values():
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+
+        walk(data)
+        return author
     
     async def _extract_from_embed(self, url: str) -> Optional[str]:
         """Extract post content from LinkedIn's public embed endpoint."""
