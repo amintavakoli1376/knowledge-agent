@@ -12,6 +12,15 @@ class Settings(BaseSettings):
     notion_database_id: str = ""
     notion_public_base: str = "amusing-nutmeg-2ca.notion.site"
     notion_public_view_id: str = ""
+
+    # AFFiNE (self-hosted dual-save via socket.io sync protocol)
+    affine_enabled: bool = False
+    affine_url: str = "http://127.0.0.1:3010"
+    affine_public_url: str = "http://176.100.37.230:3010"
+    affine_email: str = ""
+    affine_password: str = ""
+    affine_workspace_id: str = ""
+    affine_client_version: str = "0.27.4"
     
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""

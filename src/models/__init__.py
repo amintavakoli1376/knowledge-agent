@@ -36,6 +36,7 @@ class SaveResponse(BaseModel):
     """Response after saving to Notion."""
     success: bool
     notion_url: Optional[str] = None
+    affine_url: Optional[str] = None
     title: str = ""
     platform: str = ""
     category: str = ""

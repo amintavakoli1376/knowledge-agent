@@ -184,10 +184,21 @@ async def api_save(request: SaveRequest):
         # Step 3: Save to Notion
         logger.info("Saving to Notion...")
         notion_url = await storage.save(content, analysis)
+
+        # Step 3.5: Also save to AFFiNE (best-effort — never breaks the flow)
+        affine_url = None
+        if settings.affine_enabled:
+            from .storage.affine import AFFiNEStorage
+            try:
+                logger.info("Saving to AFFiNE (parallel)...")
+                affine_url = await AFFiNEStorage().save(content, analysis)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"AFFiNE save failed (non-fatal): {e}")
         
         return SaveResponse(
             success=True,
             notion_url=notion_url,
+            affine_url=affine_url,
             title=content.title[:100],
             platform=platform,
             category=analysis.category,
