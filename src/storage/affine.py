@@ -35,9 +35,9 @@ class AFFiNEStorage:
     def _cookies(self) -> str:
         if not settings.affine_enabled:
             raise RuntimeError("AFFINE not configured (AFFINE_ENABLED unset)")
-        if self._jar is None or not settings.affine_email or not settings.affine_password:
+        if not settings.affine_email or not settings.affine_password:
             raise RuntimeError("AFFiNE email/password not configured")
-        if not self._jar:
+        if self._jar is None:
             self._jar = http.cookiejar.CookieJar()
         # login
         import urllib.request
@@ -115,7 +115,7 @@ class AFFiNEStorage:
             headers={"Cookie": cookie},
             transports=["websocket"], wait_timeout=20)
         sio.wait()
-        push = result.get("push") or {}
+        push = (result.get("push") or {}).get("data") or result.get("push") or {}
         if not push.get("accepted"):
             raise RuntimeError(f"AFFiNE push rejected: {push}")
 
