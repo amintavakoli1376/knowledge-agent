@@ -62,6 +62,41 @@ class OutlineStorage:
             parts.append("**برچسبها:** " + "، ".join(f"`{t}`" for t in tags))
         return "\n".join(parts)
 
+    # -- index table -----------------------------------------------------
+    def _append_index_row(self, title: str, category: str, url: str, tags: list[str]) -> None:
+        """Best-effort: add a row to the Knowledge Index table doc."""
+        doc_id = getattr(settings, "outline_index_doc_id", "") or ""
+        if not doc_id:
+            return
+        try:
+            info = self._api("documents.info", {"id": doc_id})
+            text = (info.get("data") or {}).get("text") or ""
+            if "| تاریخ |" not in text:
+                return
+            import datetime
+
+            row = "| {} | [{}]({}) | {} | [لینک]({}) | {} |".format(
+                datetime.date.today().isoformat(),
+                title.replace("|", "،"),
+                url,
+                category or "-",
+                url,
+                "، ".join(tags) if tags else "-",
+            )
+            lines = text.split("\n")
+            out = []
+            inserted = False
+            for ln in lines:
+                out.append(ln)
+                if not inserted and ln.strip().startswith("|-------"):
+                    out.append(row)
+                    inserted = True
+            if inserted:
+                text2 = "\n".join([l for l in out if "هنوز سندی" not in l])
+                self._api("documents.update", {"id": doc_id, "text": text2})
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Outline index row append failed (non-fatal): {e}")
+
     # -- public ----------------------------------------------------------
     def save(self, content: ExtractedContent, analysis: AIAnalysis) -> str:
         """Create a published Outline doc; returns its public URL."""
@@ -80,4 +115,7 @@ class OutlineStorage:
         )
         if not result.get("ok"):
             raise RuntimeError(f"Outline create rejected: {json.dumps(result, ensure_ascii=False)[:200]}")
-        return urljoin(settings.outline_url.rstrip("/") + "/", result["data"]["url"].lstrip("/"))
+        url = urljoin(settings.outline_url.rstrip("/") + "/", result["data"]["url"].lstrip("/"))
+        tags = getattr(analysis, "tags", None) or getattr(content, "tags", None) or []
+        self._append_index_row(title, getattr(analysis, "category", "") or "", url, tags)
+        return url

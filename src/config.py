@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     outline_url: str = "https://176.100.37.230:3012"
     outline_api_key: str = ""
     outline_collection_id: str = ""
+    outline_index_doc_id: str = ""
     
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""
