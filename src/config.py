@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     affine_password: str = ""
     affine_workspace_id: str = ""
     affine_client_version: str = "0.27.4"
+
+    # Outline (self-hosted)
+    outline_enabled: bool = False
+    outline_url: str = "https://176.100.37.230:3012"
+    outline_api_key: str = ""
+    outline_collection_id: str = ""
     
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""

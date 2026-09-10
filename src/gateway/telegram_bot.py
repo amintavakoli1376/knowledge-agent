@@ -239,8 +239,8 @@ class TelegramBot:
                 priority=existing.get("priority") or "Medium",
             )
             notion_url = ""  # از Notion دوباره ذخیره نمی‌کنیم
-            affine_url = await self._save_affine(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, affine_url)
+            outline_url = await self._save_outline(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url)
             return
 
         processing_msg = await update.message.reply_text(
@@ -272,8 +272,8 @@ class TelegramBot:
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
             
-            affine_url = await self._save_affine(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, affine_url)
+            outline_url = await self._save_outline(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url)
             
             # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
             asyncio.create_task(self._embed_content(content))
@@ -394,8 +394,8 @@ class TelegramBot:
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
 
-            affine_url = await self._save_affine(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, affine_url)
+            outline_url = await self._save_outline(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url)
 
             # ⚡ embedding بعد از جواب
             asyncio.create_task(self._embed_content(content))
@@ -429,8 +429,8 @@ class TelegramBot:
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
             
-            affine_url = await self._save_affine(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, affine_url)
+            outline_url = await self._save_outline(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url)
             
             # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
             asyncio.create_task(self._embed_content(content))
@@ -453,19 +453,19 @@ class TelegramBot:
         pattern = r'^https?://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:/.*)?$'
         return bool(re.match(pattern, url))
 
-    async def _save_affine(self, content, analysis):
-        """Best-effort AFFiNE save — never raises."""
-        if not settings.affine_enabled:
+    async def _save_outline(self, content, analysis):
+        """Best-effort Outline save — never raises."""
+        if not settings.outline_enabled:
             return None
-        from ..storage.affine import AFFiNEStorage
+        from ..storage.outline import OutlineStorage
         try:
-            return await AFFiNEStorage().save(content, analysis)
+            return await asyncio.to_thread(OutlineStorage().save, content, analysis)
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"AFFiNE save failed (non-fatal): {e}")
+            logger.warning(f"Outline save failed (non-fatal): {e}")
             return None
 
     async def _send_result(self, update: Update, content: ExtractedContent, 
-                          analysis, notion_url: str, affine_url: str | None = None):
+                          analysis, notion_url: str, outline_url: str | None = None):
         """Send formatted result to user."""
         platform_emoji = {
             'arxiv': '📄', 'website': '🌐', 'youtube': '🎥',
@@ -498,9 +498,9 @@ class TelegramBot:
         if notion_url and self._is_valid_url(notion_url):
             kb_rows.append([InlineKeyboardButton("🌐 مشاهده در Knowledge Base (بدون لاگین)", url=notion_url)])
 
-        # AFFiNE link (best-effort parallel save)
-        if affine_url and self._is_valid_url(affine_url):
-            kb_rows.append([InlineKeyboardButton("📗 مشاهده در AFFiNE", url=affine_url)])
+        # Outline link (best-effort parallel save)
+        if outline_url and self._is_valid_url(outline_url):
+            kb_rows.append([InlineKeyboardButton("📗 مشاهده در Outline", url=outline_url)])
         
         # Original link button - ONLY for non-telegram posts with valid URL
         # For telegram posts, the t.me link is the post itself, not a "source link"

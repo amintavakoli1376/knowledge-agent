@@ -37,6 +37,7 @@ class SaveResponse(BaseModel):
     success: bool
     notion_url: Optional[str] = None
     affine_url: Optional[str] = None
+    outline_url: Optional[str] = None
     title: str = ""
     platform: str = ""
     category: str = ""
