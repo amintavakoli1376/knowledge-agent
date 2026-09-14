@@ -58,6 +58,8 @@ def init_db() -> None:
             ("summary_en", "TEXT"),
             ("key_points", "TEXT"),
             ("status", "TEXT DEFAULT 'Unread'"),
+            ("starred_at", "TEXT"),  # U2b: زمان ستاره‌دار کردن (حذف نرم = Archived)
+            ("analysis_meta", "TEXT"),  # LLM-Wiki 1a: JSON تحلیل دومرحله‌ای
         ]:
             try:
                 conn.execute(f"ALTER TABLE content ADD COLUMN {col} {ddl}")
@@ -131,7 +133,8 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
                     category=excluded.category, priority=excluded.priority,
                     tags=excluded.tags, summary_fa=excluded.summary_fa,
                     summary_en=excluded.summary_en, key_points=excluded.key_points,
-                    status=excluded.status, metadata=excluded.metadata,
+                    -- status کاربر (U2b) با re-save ذخیرهٔ جدید نمی‌پرد
+                    status=content.status, metadata=excluded.metadata,
                     saved_at=excluded.saved_at
                 """,
                 (
@@ -164,11 +167,18 @@ def save_analysis(url: str, analysis) -> None:
         init_db()
         conn = _get_connection()
         try:
+            # LLM-Wiki 1a: تحلیل ساختارمند — اگر مدل پاس ۱ را نداد، خالی ذخیره می‌شود
+            meta = {
+                "entities": list(getattr(analysis, "entities", []) or []),
+                "concepts": list(getattr(analysis, "concepts", []) or []),
+                "connections": list(getattr(analysis, "connections", []) or []),
+                "contradictions": list(getattr(analysis, "contradictions", []) or []),
+            }
             conn.execute(
                 """
                 UPDATE content SET
                     category=?, priority=?, tags=?, summary_fa=?,
-                    summary_en=?, key_points=?
+                    summary_en=?, key_points=?, analysis_meta=?
                 WHERE url=?
                 """,
                 (
@@ -178,6 +188,7 @@ def save_analysis(url: str, analysis) -> None:
                     analysis.summary_fa or "",
                     analysis.summary_en or "",
                     json.dumps(analysis.key_points or [], ensure_ascii=False),
+                    json.dumps(meta, ensure_ascii=False) if any(meta.values()) else "",
                     url,
                 ),
             )

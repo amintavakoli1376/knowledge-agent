@@ -16,11 +16,12 @@ import logging
 import re
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from src.config import settings
 
@@ -268,3 +269,214 @@ async def api_stats() -> dict[str, Any]:
         "by_category": by_category,
         "top_tags": [{"tag": t, "count": n} for t, n in counter.most_common(15)],
     }
+
+
+# ---------------- U2 — جست‌وجو ⌘K و وضعیت‌ها ----------------
+
+_FTS_COLUMNS = ("url", "title", "full_text")
+
+
+def _fts_safe_query(q: str) -> str:
+    """پرس‌وجوی خام کاربر → FTS5 MATCH امن.
+
+    توکن‌ها با OR + پیشوند (*) ترکیب می‌شوند (فراخوانی بهتر برای فارسیِ چسبیده
+    مثل «مدلdeepseek»)؛ عبارت کامل هم به‌صورت phrase اضافه می‌شود تا اسنادِ
+    دارندهٔ دقیق عبارت، بالاتر از bm25 بیایند.
+    """
+    q = (q or "").strip()
+    if not q:
+        return ""
+    # کاراکترهای خاص FTS (" را نمی‌شود داخل "..." آورد) → توکن‌ها را جدا و کوتو می‌کنیم
+    tokens = [m[0] or m[1] for m in re.findall(r"\"([^\"]*)\"|(\S+)", q.replace('"', ""))]
+    tokens = [t for t in tokens if t]
+    if not tokens:
+        return ""
+    parts = [f'"{ " ".join(tokens) }"'] if len(tokens) > 1 else []
+    parts += [f'"{t}"*' for t in tokens]
+    return " OR ".join(dict.fromkeys(parts))
+
+
+@router.get("/search")
+async def api_search(q: str = "", limit: int = Query(20, ge=1, le=50)) -> dict[str, Any]:
+    """U2a — جست‌وجوی ⌘K: FTS5 + اسنیپت هایلایت؛ کوتاه‌تر از ۳ حرف → LIKE.
+
+    مفاهیم منطبق از جدول concepts (LLM-Wiki 1b) هم برمی‌گردد.
+    """
+    q = (q or "").strip()
+    if not q:
+        return {"query": "", "items": [], "concepts": [], "total": 0, "mode": "empty"}
+
+    # نرمال‌سازی ی/ک عربی → فارسی (متن ذخیره‌شده فارسی استاندارد دارد)
+    q_fa = _fix_persian(q)
+
+    con = _con(_KB_PATH)
+    try:
+        mode = "fts"
+        fts_q = _fts_safe_query(q_fa)
+        rows: list = []
+        if len(q_fa) >= 3 and fts_q:
+            try:
+                marks = "«", "»"
+                rows = con.execute(
+                    "SELECT c.id, c.url, c.title, c.platform, c.category, c.tags, c.summary_fa,"
+                    " c.status, c.saved_at, c.author, c.full_text AS full_text,"
+                    f" snippet(content_fts, 2, '{marks[0]}', '{marks[1]}', '…', 16) AS snippet,"
+                    f" highlight(content_fts, 1, '{marks[0]}', '{marks[1]}') AS title_hl,"
+                    " bm25(content_fts) AS rank"
+                    " FROM content_fts JOIN content c ON c.id = content_fts.rowid"
+                    " WHERE content_fts MATCH ? ORDER BY rank LIMIT ?",
+                    (fts_q, limit),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = []  # سینتکس بد → fallback
+        if not rows:
+            mode = "like"
+            like = f"%{q_fa}%"
+            rows = con.execute(
+                "SELECT id, url, title, platform, category, tags, summary_fa, status, saved_at,"
+                " author, full_text, '' AS snippet, title AS title_hl, 0 AS rank"
+                " FROM content WHERE title LIKE ? OR summary_fa LIKE ? OR full_text LIKE ?"
+                " ORDER BY saved_at DESC LIMIT ?",
+                (like, like, like, limit),
+            ).fetchall()
+
+        doc_ids = _registry_doc_ids()
+        items = []
+        for r in rows:
+            d = _doc_row(r, doc_ids)
+            d["snippet"] = _fix_persian(r["snippet"] or "")
+            d["title_hl"] = _fix_persian(r["title_hl"] or d["title"])
+            d["rank"] = r["rank"]
+            items.append(d)
+
+        # مفاهیم منطبق: norm/display حاوی عبارت (جدول concepts از LLM-Wiki 1b)
+        concepts = []
+        like_c = f"%{q_fa.replace(' ', '')}%"  # norm بدون فاصله (ZWNJ join)
+        try:
+            crows = con.execute(
+                "SELECT norm, display, doc_count, doc_ids FROM concepts"
+                " WHERE display LIKE ? OR norm LIKE ? ORDER BY doc_count DESC LIMIT 5",
+                (f"%{q_fa}%", like_c),
+            ).fetchall()
+            for cr in crows:
+                ids = [i.strip() for i in (cr["doc_ids"] or "").split(",") if i.strip()]
+                concepts.append(
+                    {
+                        "norm": cr["norm"],
+                        "display": _fix_persian(cr["display"]),
+                        "doc_count": cr["doc_count"],
+                        "doc_ids": ids,
+                    }
+                )
+        except sqlite3.Error:
+            pass
+
+        return {"query": q, "mode": mode, "total": len(items), "items": items, "concepts": concepts}
+    finally:
+        con.close()
+
+
+def _content_url_for(doc_id: str) -> str:
+    """doc_id اووت‌لاین → URL منبع در registry (نرمال‌نشده)."""
+    with _con(_REG_PATH) as reg_con:
+        row = reg_con.execute(
+            "SELECT source_url FROM outline_docs WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Unknown doc_id")
+    return row["source_url"]
+
+
+@router.patch("/docs/{doc_id}/status")
+async def api_set_status(doc_id: str, request: Request) -> dict[str, Any]:
+    """U2b — وضعیت سند: Unread | Read | Starred | Archived (فقط SQLite؛ Outline دست نمی‌خورد)."""
+    body = await request.json()
+    status = str(body.get("status", "")).strip()
+    if not _STATUS_RE.match(status):
+        raise HTTPException(400, "status must be Unread|Read|Starred|Archived")
+    status = status.capitalize()
+
+    source_url = _content_url_for(doc_id)
+    now = datetime.now(timezone.utc).isoformat()
+    with _con(_KB_PATH) as con:
+        cur = con.execute(
+            "UPDATE content SET status = ?,"
+            " starred_at = CASE WHEN ? = 'Starred' THEN ? ELSE NULL END"
+            " WHERE url IN (?, ?)",
+            (status, status, now, source_url, source_url.rstrip("/")),
+        )
+        con.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Doc has no content row in knowledge.db")
+    return {"doc_id": doc_id, "status": status, "starred_at": now if status == "Starred" else ""}
+
+
+@router.post("/docs/{doc_id}/tags")
+async def api_set_tags(doc_id: str, request: Request) -> dict[str, Any]:
+    """U2c — افزودن/حذف برچسب: {add: [...]} یا {remove: [...]} یا {tags: [...]} (جایگزینی کامل).
+
+    فقط ستون tags در content؛ Outline دست نمی‌خورد.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "JSON body required")
+    add = [str(t).strip() for t in body.get("add", []) if str(t).strip()]
+    remove = [str(t).strip() for t in body.get("remove", []) if str(t).strip()]
+    replace = body.get("tags") if isinstance(body.get("tags"), list) else None
+
+    source_url = _content_url_for(doc_id)
+    with _con(_KB_PATH) as con:
+        row = con.execute(
+            "SELECT tags FROM content WHERE url IN (?, ?)",
+            (source_url, source_url.rstrip("/")),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Doc has no content row in knowledge.db")
+        current = _parse_tags(row["tags"])
+        if replace is not None:
+            tags = [str(t).strip() for t in replace if str(t).strip()]
+        else:
+            tags = [t for t in current if t not in remove]
+            for t in add:
+                if t not in tags:
+                    tags.append(t)
+        con.execute(
+            "UPDATE content SET tags = ? WHERE url IN (?, ?)",
+            (json.dumps(tags, ensure_ascii=False), source_url, source_url.rstrip("/")),
+        )
+        con.commit()
+    return {"doc_id": doc_id, "tags": tags}
+
+
+@router.get("/concepts")
+async def api_concepts(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
+    """U3a — فهرست مفاهیم مشترک (doc_count >= min_docs) + اسناد حامل."""
+    with _con(_KB_PATH) as con:
+        rows = con.execute(
+            "SELECT norm, display, doc_count, doc_ids FROM concepts WHERE doc_count >= ?"
+            " ORDER BY doc_count DESC",
+            (min_docs,),
+        ).fetchall()
+        id_url = dict(con.execute("SELECT id, url FROM content").fetchall())
+    doc_ids = _registry_doc_ids()
+    out = []
+    for r in rows:
+        docs = []
+        for i in [x.strip() for x in (r["doc_ids"] or "").split(",") if x.strip()]:
+            if not i.isdigit():
+                continue
+            url = id_url.get(int(i), "")
+            if not url:
+                continue
+            did = doc_ids.get(_norm_url(url), "")
+            docs.append({"doc_id": did, "view_url": f"/view/{did}" if did else "", "url": url})
+        out.append(
+            {
+                "norm": r["norm"],
+                "display": _fix_persian(r["display"]),
+                "doc_count": r["doc_count"],
+                "docs": docs,
+            }
+        )
+    return {"concepts": out, "total": len(out)}
