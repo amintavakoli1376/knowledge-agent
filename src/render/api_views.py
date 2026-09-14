@@ -53,13 +53,24 @@ def _con(path: _KB_PATH | _REG_PATH) -> sqlite3.Connection:  # type: ignore[vali
 
 
 def _registry_doc_ids() -> dict[tuple[str, str], str]:
-    """{کلید نرمال URL منبع: doc_id اووت‌لاین}."""
+    """{کلید نرمال URL منبع: doc_id اووت‌لاین} + کش hash(url) منفی برای concepts.doc_ids."""
     try:
         with _con(_REG_PATH) as con:
             rows = con.execute("SELECT source_url, doc_id FROM outline_docs").fetchall()
     except sqlite3.Error:
         return {}
-    return {_norm_url(r["source_url"]): r["doc_id"] for r in rows}
+    global _HASH_TO_URL
+    import hashlib
+
+    mapping: dict[tuple[str, str], str] = {}
+    hash_map: dict[str, str] = {}
+    for r in rows:
+        url = r["source_url"] or ""
+        mapping[_norm_url(url)] = r["doc_id"]
+        h = int(hashlib.sha1(url.encode()).hexdigest()[:8], 16)
+        hash_map[str(-(h % 1_000_000_000) - 1)] = url
+    _HASH_TO_URL = hash_map
+    return mapping
 
 
 def _parse_tags(raw: str | None) -> list[str]:
@@ -106,6 +117,8 @@ _SORTS = {
     "oldest": "saved_at ASC",
     "title": "title COLLATE NOCASE ASC",
 }
+
+_HASH_TO_URL: dict[str, str] = {}  # کلید منفی concepts.doc_ids → URL منبع
 
 # ستون‌های مجازِ status (مطابق طرح؛ فعلاً همه Unread هستند ولی فیلتر آینده‌نگر است)
 
@@ -451,7 +464,11 @@ async def api_set_tags(doc_id: str, request: Request) -> dict[str, Any]:
 
 @router.get("/concepts")
 async def api_concepts(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
-    """U3a — فهرست مفاهیم مشترک (doc_count >= min_docs) + اسناد حامل."""
+    """U3a — فهرست مفاهیم مشترک (doc_count >= min_docs) + اسناد حامل.
+
+    doc_ids در جدول concepts دوگونه است: مثبت = content.id (backfill 1b)،
+    منفی = hash(url) (مسیر فعلی outline.py) — هر دو resolve می‌شوند.
+    """
     with _con(_KB_PATH) as con:
         rows = con.execute(
             "SELECT norm, display, doc_count, doc_ids FROM concepts WHERE doc_count >= ?"
@@ -464,9 +481,11 @@ async def api_concepts(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
     for r in rows:
         docs = []
         for i in [x.strip() for x in (r["doc_ids"] or "").split(",") if x.strip()]:
-            if not i.isdigit():
-                continue
-            url = id_url.get(int(i), "")
+            url = ""
+            if i.isdigit():
+                url = id_url.get(int(i), "")
+            elif i.lstrip("-").isdigit():  # کلید منفی = hash(url)
+                url = _HASH_TO_URL.get(i, "")
             if not url:
                 continue
             did = doc_ids.get(_norm_url(url), "")
@@ -480,3 +499,155 @@ async def api_concepts(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
             }
         )
     return {"concepts": out, "total": len(out)}
+
+
+def _docs_for_concept(con_row: sqlite3.Row, id_url: dict[int, str], doc_ids: dict[tuple[str, str], str]) -> list[dict]:
+    """ردیف concept → لیست اسناد حامل (resolve هر دو نوع id: مثبت/منفی)."""
+    docs = []
+    seen: set[str] = set()
+    for i in [x.strip() for x in (con_row["doc_ids"] or "").split(",") if x.strip()]:
+        url = ""
+        if i.isdigit():
+            url = id_url.get(int(i), "")
+        elif i.lstrip("-").isdigit():
+            url = _HASH_TO_URL.get(i, "")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        with _con(_KB_PATH) as con:
+            r = con.execute(
+                "SELECT url, title, platform, category, tags, summary_fa, author, status,"
+                " saved_at, full_text FROM content WHERE url IN (?, ?)",
+                (url, url.rstrip("/")),
+            ).fetchone()
+        if r:
+            docs.append(_doc_row(r, doc_ids))
+    return docs
+
+
+@router.get("/concepts/{norm}")
+async def api_concept_page(norm: str) -> dict[str, Any]:
+    """U3b — صفحهٔ مفهوم: همهٔ اسناد حامل مفهوم + مفاهیم هم‌جوار (برای گراف کوچک)."""
+    norm_decoded = norm
+    with _con(_KB_PATH) as con:
+        row = con.execute(
+            "SELECT norm, display, doc_count, doc_ids FROM concepts WHERE norm = ?",
+            (norm_decoded,),
+        ).fetchone()
+        if not row:
+            # تلاش دوم: بدون حساس به ZWNJ — norm های موجود را می‌سنجیم
+            cand = con.execute("SELECT norm, display, doc_count, doc_ids FROM concepts").fetchall()
+            target = norm_decoded.replace(" ", "\u200c")
+            row = next((r for r in cand if r["norm"] == target), None)
+        if not row:
+            raise HTTPException(404, "Unknown concept")
+
+        id_url = dict(con.execute("SELECT id, url FROM content").fetchall())
+    doc_ids = _registry_doc_ids()
+    docs = _docs_for_concept(row, id_url, doc_ids)
+
+    # مفاهیم هم‌جوار: مفاهیمی که در همین اسناد هم هستند (بدون خود مفهوم)
+    related: list[dict] = []
+    if docs:
+        with _con(_KB_PATH) as con:
+            id_list = [
+                str(i)
+                for i, u in id_url.items()
+                if any(d["source_url"].rstrip("/") == (u or "").rstrip("/") for d in docs)
+            ]
+            if id_list:
+                placeholders = ",".join("?" * len(id_list))
+                cands = con.execute(
+                    f"SELECT norm, display, doc_count, doc_ids FROM concepts"
+                    f" WHERE doc_ids IN ({placeholders}) OR ({' OR '.join(['doc_ids LIKE ?'] * len(id_list))})"
+                    " ORDER BY doc_count DESC LIMIT 20",
+                    [*id_list, *[f"%{i}%" for i in id_list]],
+                ).fetchall()
+            else:
+                cands = []
+        seen_norm = {row["norm"]}
+        for c in cands:
+            if c["norm"] in seen_norm:
+                continue
+            seen_norm.add(c["norm"])
+            related.append(
+                {
+                    "norm": c["norm"],
+                    "display": _fix_persian(c["display"]),
+                    "doc_count": c["doc_count"],
+                }
+            )
+
+    return {
+        "norm": row["norm"],
+        "display": _fix_persian(row["display"]),
+        "doc_count": row["doc_count"],
+        "docs": docs,
+        "related_concepts": related[:10],
+    }
+
+
+@router.get("/graph")
+async def api_graph(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
+    """U3c — گراف: گره‌ها = اسناد + مفاهیم؛ یال‌ها = هم‌مفهومی.
+
+    خروجی سبک برای sigma.js/vis نمایشی — کوئری دیتابیسی، بدون LLM.
+    """
+    with _con(_KB_PATH) as con:
+        crows = con.execute(
+            "SELECT norm, display, doc_count, doc_ids FROM concepts WHERE doc_count >= ?"
+            " ORDER BY doc_count DESC LIMIT 100",
+            (min_docs,),
+        ).fetchall()
+        id_title = dict(con.execute("SELECT id, title FROM content").fetchall())
+        id_url = dict(con.execute("SELECT id, url FROM content").fetchall())
+    doc_ids = _registry_doc_ids()
+
+    nodes: dict[str, dict] = {}
+    edges: list[dict] = []
+
+    def _add_doc(url: str) -> str | None:
+        did = doc_ids.get(_norm_url(url), "")
+        key = f"doc:{did}" if did else f"url:{url}"
+        if key not in nodes:
+            with _con(_KB_PATH) as con:
+                r = con.execute("SELECT title FROM content WHERE url IN (?, ?)", (url, url.rstrip("/"))).fetchone()
+            nodes[key] = {
+                "id": key,
+                "type": "doc",
+                "label": _fix_persian((r["title"] if r else url)[:50]),
+                "doc_id": did,
+                "view_url": f"/view/{did}" if did else "",
+            }
+        return key
+
+    for c in crows:
+        ckey = f"concept:{c['norm']}"
+        nodes[ckey] = {
+            "id": ckey,
+            "type": "concept",
+            "label": _fix_persian(c["display"]),
+            "doc_count": c["doc_count"],
+        }
+        for i in [x.strip() for x in (c["doc_ids"] or "").split(",") if x.strip()]:
+            url = ""
+            if i.isdigit():
+                url = id_url.get(int(i), "")
+            elif i.lstrip("-").isdigit():
+                url = _HASH_TO_URL.get(i, "")
+            if not url:
+                continue
+            dkey = _add_doc(url)
+            if dkey:
+                edges.append({"source": ckey, "target": dkey})
+
+    # حذف گره‌های سندِ یتیم (هیچ یال ندارند — نباید اتفاق بیفتد ولی محافظ)
+    connected = {e["source"] for e in edges} | {e["target"] for e in edges}
+    nodes = {k: v for k, v in nodes.items() if k in connected or v["type"] == "concept"}
+
+    return {
+        "nodes": list(nodes.values()),
+        "edges": edges,
+        "total_nodes": len(nodes),
+        "total_edges": len(edges),
+    }
