@@ -3,6 +3,7 @@
 FastAPI server that handles Telegram webhooks and provides a REST API
 for saving content to Notion.
 """
+import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .gateway.telegram_bot import TelegramBot
@@ -92,6 +94,19 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Static assets for the Kaghaz (کاغذ) RTL reader
+app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent.parent / "static")), name="static")
+
+# کاغذ view routes (/index, /view/{doc_id})
+from .render.views import router as kaghaz_router  # noqa: E402
+
+app.include_router(kaghaz_router)
+
+# کاغذ JSON API (فاز U1): /api/docs, /api/docs/{id}, /api/tree, /api/stats
+from .render.api_views import router as kaghaz_api_router  # noqa: E402
+
+app.include_router(kaghaz_api_router)
 
 
 @app.get("/health")
