@@ -381,15 +381,28 @@ a:hover { text-decoration: underline; }
   border-radius: 8px;
 }
 .kg-menu-btn:hover { background: var(--surface-low); }
+.kg-sidebar-close {
+  display: none; float: left; margin-inline-start: auto;
+  border: none; background: transparent; color: var(--ink-muted);
+  font-size: 16px; cursor: pointer; padding: 2px 8px; border-radius: 6px;
+}
+.kg-sidebar-close:hover { background: var(--surface-low); color: var(--ink); }
+.kg-sidebar-veil { display: none; }
 @media (max-width: 1024px) {
   .kg-sidebar {
-    position: fixed; right: 0; top: 0; z-index: 40;
+    position: fixed; right: 0; top: 0; z-index: 110;
     transform: translateX(100%);
     transition: transform 0.2s ease;
     box-shadow: -8px 0 24px rgba(2, 9, 58, 0.10);
   }
   .kg-sidebar.open { transform: translateX(0); }
   .kg-menu-btn { display: inline-flex; }
+  .kg-sidebar-close { display: inline-block; }
+  .kg-sidebar-veil {
+    display: none; position: fixed; inset: 0; z-index: 105;
+    background: rgba(2, 9, 58, 0.18);
+  }
+  .kg-sidebar-veil.open { display: block; }
 }
 @media (max-width: 768px) {
   .kg-page { padding: 24px 16px 64px; }

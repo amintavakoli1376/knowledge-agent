@@ -5,16 +5,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=8">
+<link rel="stylesheet" href="/static/kaghaz.css?v=9">
 </head>
 <body>
 <div class="kg-shell">
   <aside class="kg-sidebar" id="sidebar">
-    <div class="kg-tree-title">کاغذ — پایگاه دانش</div>
+    <div class="kg-tree-title">کاغذ — پایگاه دانش<button class="kg-sidebar-close" onclick="kgToggleSidebar(false)" aria-label="بستن">✕</button></div>
     <nav class="kg-tree">
-      <a href="/index" {% if active == 'index' %}class="active"{% endif %}>شاخص دانش</a>
+      <a href="/index" onclick="kgToggleSidebar(false)" {% if active == 'index' %}class="active"{% endif %}>شاخص دانش</a>
       {% for d in tree_docs %}
-      <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
+      <a href="/view/{{ d.id }}" onclick="kgToggleSidebar(false)" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
       {% endfor %}
     </nav>
     <!-- U-C5: مفاهیم مشترک — متصل به /api/concepts -->
@@ -23,9 +23,10 @@
       <nav class="kg-tree" id="kgConcepts"><span class="kg-small kg-muted" style="padding:0 8px">…</span></nav>
     </div>
   </aside>
+  <div class="kg-sidebar-veil" id="kgSidebarVeil" onclick="kgToggleSidebar(false)"></div>
   <div class="kg-canvas">
     <header class="kg-topbar">
-      <button class="kg-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      <button class="kg-menu-btn" onclick="kgToggleSidebar()" aria-label="منو">☰</button>
       <span class="kg-crumb">Knowledge Base <b>/ {{ crumb }}</b></span>
       <button class="kg-cmdk-btn" id="kgCmdkBtn" title="جست‌وجو (Ctrl+K)">جست‌وجو… <kbd>Ctrl K</kbd></button>
     </header>
@@ -148,6 +149,14 @@
 })();
 </script>
 <script>
+// سایدبار موبایل: باز/بستن سه‌طرفه (دکمه ☰، دکمه ✕، کلیک بیرون)
+function kgToggleSidebar(force){
+  var sb = document.getElementById('sidebar');
+  var veil = document.getElementById('kgSidebarVeil');
+  var open = (force === undefined) ? !sb.classList.contains('open') : force;
+  sb.classList.toggle('open', open);
+  if (veil) veil.classList.toggle('open', open);
+}
 function kgCopyCode(btn){
   const code = btn.closest('.kg-code').querySelector('code').innerText;
   navigator.clipboard.writeText(code).then(()=>{
