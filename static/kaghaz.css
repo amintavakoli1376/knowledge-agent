@@ -400,6 +400,11 @@ a:hover { text-decoration: underline; }
 
 /* ---------- Blocks ---------- */
 .kg-blocks > * + * { margin-top: 14px; }
+/* R3: بدنهٔ سند داخل article card — پدینگ افقی بلوک‌ها (هدر/props پدینگ خود را دارند) */
+.kg-article .kg-blocks { padding: 8px 40px 0; }
+@media (max-width: 768px) {
+  .kg-article .kg-blocks { padding: 8px 20px 0; }
+}
 
 /* پاراگراف */
 .kg-p { margin: 0; color: var(--ink); font-size: 1rem; }
