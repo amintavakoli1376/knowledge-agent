@@ -530,6 +530,31 @@ a:hover { text-decoration: underline; }
   .kg-page-wide { padding: 0; }
 }
 
+/* ---------- KPI cards با sparkline (R2) ---------- */
+.kg-kpis {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  margin: 16px 0 4px;
+}
+.kg-kpi {
+  padding: 16px; border-radius: 12px;
+  background: var(--surface-low);
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-height: 128px;
+}
+.kg-kpi-top {
+  display: flex; align-items: center; justify-content: space-between;
+  color: var(--ink-muted); font-size: 0.75rem; font-weight: 500;
+}
+.kg-kpi-val { font-size: 1.5rem; font-weight: 700; color: var(--ink); margin-top: 10px; }
+.kg-kpi-sub { margin: 4px 0 0; font-size: 0.875rem; color: var(--ink-muted); }
+.kg-kpi-spark { height: 28px; margin-top: 10px; color: var(--action); }
+.kg-kpi-spark svg { width: 100%; height: 100%; display: block; }
+@media (max-width: 768px) {
+  .kg-kpis { grid-template-columns: 1fr; gap: 10px; }
+  .kg-kpi { min-height: 0; }
+  .kg-kpi-spark { height: 22px; }
+}
+
 /* ---------- Utility ---------- */
 .kg-muted { color: var(--ink-muted); }
 .kg-small { font-size: 0.875rem; }

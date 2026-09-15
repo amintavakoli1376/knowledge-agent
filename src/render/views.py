@@ -147,6 +147,23 @@ async def kaghaz_root():
     return RedirectResponse("/index")
 
 
+def _sparkline_data() -> list[int]:
+    """روند ۷ روزهٔ ذخیرهٔ اسناد (برای sparkline کارت KPI) — یک کوئری گروه‌بندی، بدون LLM."""
+    try:
+        with _con(_KB_PATH) as kb:
+            rows = kb.execute(
+                "SELECT date(saved_at), COUNT(*) FROM content"
+                " WHERE saved_at >= datetime('now', '-7 days') GROUP BY date(saved_at)"
+            ).fetchall()
+        by_day = {r[0]: r[1] for r in rows}
+        from datetime import date, timedelta as _td
+
+        today = date.today()
+        return [by_day.get((today - _td(days=6 - i)).isoformat(), 0) for i in range(7)]
+    except Exception:  # noqa: BLE001 — کارت KPI نباید به خطا حساس باشد
+        return [0] * 7
+
+
 @router.get("/index", response_class=HTMLResponse)
 async def kaghaz_index(request: Request, q: str = "", status: str = "", category: str = "", platform: str = "", sort: str = "newest"):
     docs = registry.list_collection_docs(limit=200)
@@ -211,6 +228,22 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
         )
     headers = ["تاریخ", "تیتر", "دسته", "پلتفرم", "وضعیت", "نویسنده", "برچسب‌ها", "URL", "خلاصه (فا)"]
 
+    # R2: کارت‌های KPI + sparkline (از همان کوئری‌های content — سبک)
+    with _con(_KB_PATH) as kb:
+        total = kb.execute("SELECT COUNT(*) FROM content").fetchone()[0]
+        last7 = kb.execute(
+            "SELECT COUNT(*) FROM content WHERE saved_at >= datetime('now', '-7 days')"
+        ).fetchone()[0]
+        starred = kb.execute("SELECT COUNT(*) FROM content WHERE status = 'Starred'").fetchone()[0]
+    trend = _sparkline_data()
+    max_t = max(trend) or 1
+    pts = " ".join(f"{i * (100 / 6):.0f},{18 - (v / max_t) * 14:.0f}" for i, v in enumerate(trend))
+    kpis = [
+        {"label": "کل اسناد", "value": str(total), "sub": f"+{last7} در ۷ روز", "spark": True},
+        {"label": "ستاره‌دار", "value": str(starred), "sub": "بخوانی‌شدهٔ منتخب", "spark": False},
+        {"label": "ذخیرهٔ ۷ روز", "value": str(last7), "sub": "میانگین روزانه ~" + str(round(last7 / 7, 1)), "spark": False},
+    ]
+
     tree = [
         {"id": d.get("id"), "title": d.get("title", "")}
         for d in docs[:40]
@@ -228,6 +261,8 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
             "active": "index",
             "active_doc": "",
             "properties": "",
+            "kpis": kpis,
+            "spark_pts": pts,
             "outline_edit_url": settings.outline_url.rstrip("/") + index_doc.get("url", ""),
             "copy_js": COPY_JS,
         },

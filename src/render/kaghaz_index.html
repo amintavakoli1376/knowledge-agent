@@ -1,0 +1,59 @@
+{% from "_shell.html" import shell %}
+{% call shell(title, crumb, active, active_doc, tree_docs, wide=True) %}
+      <div class="kg-index-head">
+        <h1 class="kg-title kg-index-title">{{ title }}</h1>
+        {% if properties %}{{ properties|safe }}{% endif %}
+        <p class="kg-p kg-muted">
+          همهٔ اسناد ذخیره‌شده توسط Knowledge Agent — هر سند یک ردیف.
+        </p>
+        <!-- R2: کارت‌های KPI با sparkline — طرح Block 7 مرجع -->
+        {% if kpis %}
+        <div class="kg-kpis">
+          {% for k in kpis %}
+          <div class="kg-kpi">
+            <div class="kg-kpi-top">
+              <span>{{ k.label }}</span>
+            </div>
+            <div class="kg-kpi-val">{{ k.value }}</div>
+            <p class="kg-kpi-sub">{{ k.sub }}</p>
+            {% if k.spark %}
+            <div class="kg-kpi-spark">
+              <svg viewBox="0 0 100 20" preserveAspectRatio="none" aria-hidden="true">
+                <polyline points="{{ spark_pts }}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="kg-table-wrap">
+        <table class="kg-table">
+          <thead>
+            <tr>{% for h in index_headers %}<th>{{ h }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for r in index_rows %}
+            <tr>
+              <td class="kg-muted kg-small" style="white-space:nowrap">{{ r.date }}</td>
+              <td style="min-width:220px">
+                {% if r.view_url %}<a href="{{ r.view_url }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}
+              </td>
+              <td>{{ r.category|safe }}</td>
+              <td class="kg-muted">{{ r.platform }}</td>
+              <td>{{ r.status|safe }}</td>
+              <td class="kg-muted kg-small">{{ r.author }}</td>
+              <td class="kg-muted kg-small" style="max-width:180px">{{ r.tags }}</td>
+              <td class="kg-small">{% if r.source_url %}<a href="{{ r.source_url }}" target="_blank" rel="noopener">{{ r.source_host }}</a>{% else %}—{% endif %}</td>
+              <td class="kg-small kg-muted" style="max-width:260px">{{ r.summary_fa }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="kg-index-foot">
+        <span class="kg-small kg-muted">ذخیره‌شده توسط Knowledge Agent · کاغذ</span>
+        <a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>
+      </div>
+{% endcall %}
