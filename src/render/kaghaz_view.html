@@ -1,24 +1,41 @@
 {% from "_shell.html" import shell %}
 {% call shell(title, crumb, active, active_doc, tree_docs) %}
-      <div class="kg-doc-icon">{{ doc_emoji }}</div>
-      <h1 class="kg-title">{{ title }}</h1>
-      {% if properties %}{{ properties|safe }}{% endif %}
-      {% if doc_id %}
-      <!-- U-C4: تغییر وضعیت + نسخه‌ها — متصل به PATCH /api/docs/{id}/status و /versions -->
-      <div class="kg-statusbar" data-doc="{{ doc_id }}">
-        <button class="kg-st-act" data-st="Starred" title="ستاره‌دار">★</button>
-        <button class="kg-st-act" data-st="Read" title="خواندم">✓</button>
-        <button class="kg-st-act" data-st="Archived" title="آرشیو">▣</button>
-        <span class="kg-st-now kg-small kg-muted"></span>
-        <button class="kg-st-act kg-versions-btn" title="نسخه‌های قبلی">نسخه‌ها</button>
-      </div>
-      <div class="kg-versions" hidden></div>
-      {% endif %}
-      <div class="kg-blocks">
-        {{ body|safe }}
-      </div>
-      <footer class="kg-footer">
-        <span class="kg-small kg-muted">ذخیره‌شده توسط Knowledge Agent · کاغذ</span>
-        <a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>
-      </footer>
+      <article class="kg-article">
+        <!-- R3: کاور گرادیانی بر اساس دسته (تصویر نداریم — هویت رنگی دسته) -->
+        <div class="kg-cover">
+          <a class="kg-cover-edit" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>
+        </div>
+        <header class="kg-doc-head">
+          <!-- آیکون صفحه: حرف اول عنوان (بدون ایموجی — قاعدهٔ ثابت) -->
+          <div class="kg-doc-icon kg-doc-icon-first">{{ title[0] }}</div>
+          <h1 class="kg-title">{{ title }}</h1>
+          {% if properties %}{{ properties|safe }}{% endif %}
+          {% if doc_id %}
+          <!-- تغییر وضعیت + نسخه‌ها — متصل به PATCH /api/docs/{id}/status و /versions -->
+          <div class="kg-statusbar" data-doc="{{ doc_id }}">
+            <button class="kg-st-act" data-st="Starred" title="ستاره‌دار">★</button>
+            <button class="kg-st-act" data-st="Read" title="خواندم">✓</button>
+            <button class="kg-st-act" data-st="Archived" title="آرشیو">▣</button>
+            <span class="kg-st-now kg-small kg-muted"></span>
+            <button class="kg-st-act kg-versions-btn" title="نسخه‌های قبلی">نسخه‌ها</button>
+          </div>
+          <div class="kg-versions" hidden></div>
+          {% endif %}
+          <div class="kg-hr"></div>
+        </header>
+        <div class="kg-blocks">
+          {{ body|safe }}
+        </div>
+        <footer class="kg-footer">
+          <div class="kg-contrib">
+            <span class="kg-small kg-muted">ذخیره‌شده توسط</span>
+            <span class="kg-avatar kg-avatar-sm">ک</span>
+            <span class="kg-small">Knowledge Agent</span>
+          </div>
+          <div class="kg-foot-actions">
+            <span class="kg-sync"><i class="kg-pulse"></i>همگام‌سازی برقرار</span>
+            <a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>
+          </div>
+        </footer>
+      </article>
 {% endcall %}
