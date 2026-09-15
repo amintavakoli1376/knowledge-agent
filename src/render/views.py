@@ -227,7 +227,7 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
                 "view_url": item["view_url"],
             }
         )
-    headers = ["تاریخ", "تیتر", "دسته", "پلتفرم", "وضعیت", "نویسنده", "برچسب‌ها", "URL", "خلاصه (فا)"]
+    headers = ["تاریخ", "تیتر", "دسته", "پلتفرم", "وضعیت", "نویسنده", "برچسب‌ها", "URL"]
 
     # R2: کارت‌های KPI + sparkline (از همان کوئری‌های content — سبک)
     with _con(_KB_PATH) as kb:
