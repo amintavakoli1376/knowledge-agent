@@ -1,0 +1,161 @@
+{% macro shell(title, crumb, active, active_doc, tree_docs, wide=False) %}
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }} — کاغذ</title>
+<link rel="stylesheet" href="/static/kaghaz.css?v=8">
+</head>
+<body>
+<div class="kg-shell">
+  <aside class="kg-sidebar" id="sidebar">
+    <div class="kg-tree-title">کاغذ — پایگاه دانش</div>
+    <nav class="kg-tree">
+      <a href="/index" {% if active == 'index' %}class="active"{% endif %}>شاخص دانش</a>
+      {% for d in tree_docs %}
+      <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
+      {% endfor %}
+    </nav>
+    <!-- U-C5: مفاهیم مشترک — متصل به /api/concepts -->
+    <div class="kg-concepts-wrap">
+      <div class="kg-tree-title">مفاهیم پرتکرار</div>
+      <nav class="kg-tree" id="kgConcepts"><span class="kg-small kg-muted" style="padding:0 8px">…</span></nav>
+    </div>
+  </aside>
+  <div class="kg-canvas">
+    <header class="kg-topbar">
+      <button class="kg-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      <span class="kg-crumb">Knowledge Base <b>/ {{ crumb }}</b></span>
+      <button class="kg-cmdk-btn" id="kgCmdkBtn" title="جست‌وجو (Ctrl+K)">جست‌وجو… <kbd>Ctrl K</kbd></button>
+    </header>
+    <main class="kg-page {% if wide %}kg-page-wide{% endif %}">
+{{ caller() }}
+    </main>
+  </div>
+</div>
+
+<!-- ⌘K command palette — U-C3: متصل به /api/search -->
+<div class="kg-cmdk-veil" id="kgCmdkVeil">
+  <div class="kg-cmdk" role="dialog" aria-label="جست‌وجو">
+    <input id="kgCmdkInput" class="kg-cmdk-input" type="text" placeholder="جست‌وجو در پایگاه دانش…" autocomplete="off">
+    <div class="kg-cmdk-hint kg-small kg-muted">Enter → رفتن به سند · Esc → بستن</div>
+    <div id="kgCmdkResults" class="kg-cmdk-results"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var veil = document.getElementById('kgCmdkVeil');
+  var input = document.getElementById('kgCmdkInput');
+  var box = document.getElementById('kgCmdkResults');
+  var btn = document.getElementById('kgCmdkBtn');
+  if (!veil) return;
+  function open(){ veil.classList.add('open'); input.value=''; box.innerHTML=''; input.focus(); }
+  function close(){ veil.classList.remove('open'); }
+  btn.addEventListener('click', open);
+  veil.addEventListener('click', function(e){ if(e.target===veil) close(); });
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); open(); }
+    if(e.key==='Escape') close();
+  });
+  var t=null;
+  input.addEventListener('input', function(){
+    clearTimeout(t);
+    var q = input.value.trim();
+    if(q.length<2){ box.innerHTML=''; return; }
+    t=setTimeout(function(){
+      fetch('/api/search?q='+encodeURIComponent(q)).then(r=>r.json()).then(d=>{
+        if(!d.items || !d.items.length){ box.innerHTML='<div class="kg-cmdk-empty">چیزی پیدا نشد</div>'; return; }
+        box.innerHTML = d.items.slice(0,8).map(it=>
+          '<a class="kg-cmdk-item" href="'+(it.view_url||'#')+'">'+
+          '<span class="kg-cmdk-title">'+it.title.replace(/</g,'&lt;')+'</span>'+
+          (it.snippet?'<span class="kg-cmdk-snippet">'+it.snippet+'</span>':'')+
+          '</a>'
+        ).join('');
+      }).catch(()=>{ box.innerHTML='<div class="kg-cmdk-empty">خطا در جست‌وجو</div>'; });
+    }, 250);
+  });
+  input.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){
+      var first = box.querySelector('a.kg-cmdk-item');
+      if(first) window.location.href = first.href;
+    }
+  });
+})();
+</script>
+<script>
+(function(){
+  // U-C5: مفاهیم پرتکرار در سایدبار
+  var box = document.getElementById('kgConcepts');
+  if (box) {
+    fetch('/api/concepts?min_docs=1').then(r=>r.json()).then(d=>{
+      var list = (d.concepts||[]).filter(c=>c.doc_count>=2).slice(0,10);
+      if(!list.length){ box.innerHTML='<span class="kg-small kg-muted" style="padding:0 8px">هنوز مفهوم تکراری نیست</span>'; return; }
+      box.innerHTML = list.map(c=>
+        '<a href="/api/concepts/'+encodeURIComponent(c.norm)+'" title="'+c.display+' ('+c.doc_count+' سند)" onclick="kgConcept(event,this)">'+c.display+' <span class="kg-cnt">'+c.doc_count+'</span></a>'
+      ).join('');
+    }).catch(()=>{ box.innerHTML=''; });
+  }
+  window.kgConcept = function(e, a){
+    e.preventDefault();
+    // صفحهٔ مفهوم فعلاً به‌صورت مودال ساده: اسناد حامل
+    fetch(a.getAttribute('href')).then(r=>r.json()).then(d=>{
+      var html = '<div class="kg-concept-modal"><h3>'+d.display+'</h3><p class="kg-small kg-muted">'+d.doc_count+' سند</p>'+
+        (d.docs||[]).map(x=> x.view_url ? '<a href="'+x.view_url+'">'+(x.title||x.url)+'</a>' : '<span class="kg-muted kg-small">'+(x.title||x.url)+'</span>').join('<br>')+
+        '<br><br><button onclick="this.closest(\'.kg-concept-modal\').remove()">بستن</button></div>';
+      var el = document.createElement('div'); el.style.cssText='position:fixed;inset:0;z-index:99';
+      el.innerHTML = html; el.addEventListener('click', ev=>{ if(ev.target===el) el.remove(); });
+      document.body.appendChild(el);
+    });
+  };
+})();
+(function(){
+  // U-C4: نوار وضعیت + نسخه‌ها (فقط صفحهٔ سند)
+  var bar = document.querySelector('.kg-statusbar');
+  if (!bar) return;
+  var docId = bar.dataset.doc;
+  var now = bar.querySelector('.kg-st-now');
+  var vbox = document.querySelector('.kg-versions');
+  var FA = {Unread:'خوانده‌نشده', Read:'خوانده‌شده', Starred:'ستاره‌دار', Archived:'آرشیو'};
+  fetch('/api/docs/'+docId).then(r=>r.ok?r.json():null).then(d=>{
+    if(d){ now.textContent = 'وضعیت: ' + (FA[d.status]||d.status); }
+  }).catch(()=>{});
+  bar.querySelectorAll('.kg-st-act[data-st]').forEach(function(b){
+    b.addEventListener('click', function(){
+      fetch('/api/docs/'+docId+'/status', {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({status: b.dataset.st})
+      }).then(r=>r.json()).then(d=>{
+        if(d.status){ now.textContent = 'وضعیت: ' + (FA[d.status]||d.status); }
+      }).catch(()=>{});
+    });
+  });
+  bar.querySelector('.kg-versions-btn').addEventListener('click', function(){
+    if(!vbox.hidden){ vbox.hidden = true; return; }
+    fetch('/api/docs/'+docId+'/versions').then(r=>r.json()).then(d=>{
+      if(!d.versions || !d.versions.length){ vbox.innerHTML='<div class="kg-small kg-muted">نسخهٔ قبلی ثبت نشده — با اولین به‌روزرسانی بعدی ساخته می‌شود</div>'; vbox.hidden=false; return; }
+      vbox.innerHTML = '<div class="kg-tree-title">نسخه‌های قبلی (آخرین '+d.max_kept+')</div>' + d.versions.map(v=>
+        '<div class="kg-version-row"><span class="kg-small">'+v.title.slice(0,50)+' · '+v.snapshotted_at+' · '+v.chars+' حرف</span>'+
+        '<button class="kg-st-act" onclick="kgRestore('+v.version_id+')">بازگردانی</button></div>'
+      ).join('');
+      vbox.hidden = false;
+    });
+  });
+  window.kgRestore = function(vid){
+    fetch('/api/docs/'+docId+'/versions/'+vid+'/restore', {method:'POST'})
+      .then(r=>r.json()).then(()=>{ window.location.reload(); });
+  };
+})();
+</script>
+<script>
+function kgCopyCode(btn){
+  const code = btn.closest('.kg-code').querySelector('code').innerText;
+  navigator.clipboard.writeText(code).then(()=>{
+    btn.textContent='کپی شد!';
+    setTimeout(()=>{btn.textContent='کپی کردن کد';},1500);
+  });
+}
+</script>
+</body>
+</html>
+{% endmacro %}

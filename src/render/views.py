@@ -17,6 +17,14 @@ from fastapi.templating import Jinja2Templates
 
 from src.config import settings
 from src.render import registry
+from src.render.api_views import (
+    _KB_PATH,
+    _con,
+    _doc_row,
+    _registry_doc_ids,
+    _SORTS as _API_SORTS,
+    _STATUS_RE as _API_STATUS_RE,
+)
 from src.render.parser import parse
 from src.render.renderer import (
     COPY_JS,
@@ -51,7 +59,7 @@ def _host(url: str) -> str:
         return url
 
 
-_slug_cache: dict = {"at": 0.0, "map": {}}
+_slug_cache: dict = {"at": 0.0, "map": {}, "title_map": {}}
 
 
 def _slug_doc_ids() -> dict[str, str]:
@@ -66,14 +74,23 @@ def _slug_doc_ids() -> dict[str, str]:
             res = registry._api("documents.list", {"limit": 100, "sort": "updatedAt"})
             docs = res.get("data") if isinstance(res.get("data"), list) else (res.get("data") or {}).get("documents") or []
             m = {}
+            tmap: dict[str, str] = {}
             for d in docs:
                 u = d.get("url") or ""
                 m[u.rstrip("/").split("/")[-1]] = d.get("id") or ""
+                tmap[(d.get("title") or "").strip()] = d.get("id") or ""
             _slug_cache["at"] = _t.time()
             _slug_cache["map"] = m
+            _slug_cache["title_map"] = tmap
         except Exception as e:  # noqa: BLE001 — نمایش شاخص نباید به Outline وابسته بماند
             logger.warning(f"slug map fetch failed: {e}")
     return _slug_cache["map"]
+
+
+def _title_doc_ids() -> dict[str, str]:
+    """{عنوان سند اووت‌لاین: doc_id} — fallback برای اسناد قدیمیِ بدون رجیستری."""
+    _slug_doc_ids()  # تضمین کش
+    return _slug_cache["title_map"]
 
 
 def _index_meta_by_url() -> tuple[list[str], dict[str, list[str]]]:
@@ -131,61 +148,68 @@ async def kaghaz_root():
 
 
 @router.get("/index", response_class=HTMLResponse)
-async def kaghaz_index(request: Request):
+async def kaghaz_index(request: Request, q: str = "", status: str = "", category: str = "", platform: str = "", sort: str = "newest"):
     docs = registry.list_collection_docs(limit=200)
     index_doc = next((d for d in docs if "شاخص" in d.get("title", "")), None)
     if not index_doc:
         raise HTTPException(503, "Index document unavailable")
 
+    # U-C1/C2: جدول شاخص از content (همان منبع /api/docs) + فیلترهای سرور-رندر
     reg = {u.rstrip("/"): did for u, did, _t in registry.all_docs()}
     slug_map = _slug_doc_ids()  # PDF ها: از لینک «📄 سند» → doc_id
-    blocks = parse(index_doc.get("text", ""))
-    table = next((b for b in blocks if b.type == "table"), None)
-    headers: list[str] = []
-    rows: list[dict] = []
-    if table:
-        ncols = len(table.data["header"])
-        # فرمت فعلی ۱۰ ستونی (بدون Summary EN). «سند» (آخر) نمایش داده نمیشه —
-        # اسم مقاله خودش لینک /view داره. فرمت قدیمی ۱۱ ستونی هم پشتیبانی می‌شود.
-        last = 9 if ncols == 10 else 10          # ایندکس ستون «سند» (۰-based در cells خام)
-        headers = table.data["header"][:-1]
-        for raw in table.data["rows"]:
-            cells = [c.strip() for c in raw]
-            cells += [""] * ((last + 1) - len(cells))
-            title, _title_link = _parse_link(cells[1])
-            # U4-fix: لینک‌های escape‌شده (\\[file.pdf](file://…)) برای PDF ها هم استخراج می‌شوند؛
-            # doc_id اول از URL منبع، بعد از لینک «📄 سند» (چون file:// در رجیستری هست ولی
-            # برای اطمینان هر دو مسیر چک می‌شوند)
-            src_from_url_col, src_doc_col = _parse_link(cells[7])[1], _parse_link(cells[last])[1]
-            source_url = next(
-                (u for u in (src_from_url_col, src_doc_col) if u and "176.100.37.230" not in u),
-                "",
-            )
-            _, doc_link = _parse_link(cells[last])
-            doc_id = reg.get((source_url or "").rstrip("/"), "")
-            if not doc_id and doc_link:
-                # PDF: لینک سندِ اووت‌لاین → doc_id مستقیم از خود لینک
-                m_doc = re.search(r"/doc/([A-Za-z0-9-]+)", doc_link)
-                if m_doc:
-                    doc_id = slug_map.get(m_doc.group(1), "")
-            m = _cell_row(cells)
-            rows.append(
-                {
-                    "date": cells[0][:10],
-                    "title": title or cells[1][:60],
-                    "category": category_badge(m["category"]),
-                    "platform": m["platform"] or "—",
-                    "status": status_badge(m["status"]),
-                    "author": m["author"] or "—",
-                    "tags": cells[6],
-                    "source_url": source_url,
-                    "source_host": _host(source_url) if source_url else "—",
-                    "summary_fa": cells[8],
-                    "summary_en": "",
-                    "doc_url": doc_link,
-                    "view_url": f"/view/{doc_id}" if doc_id else "",
-                }
-            )
+    title_map = _title_doc_ids()  # اسناد قدیمی بدون رجیستری → با عنوان
+    where: list[str] = []
+    params: list = []
+    if q.strip():
+        like = f"%{q.strip()}%"
+        where.append("(title LIKE ? OR summary_fa LIKE ? OR full_text LIKE ?)")
+        params += [like, like, like]
+    if status and _API_STATUS_RE.match(status):
+        where.append("status = ?")
+        params.append(status.capitalize())
+    if category.strip():
+        where.append("category = ?")
+        params.append(category.strip())
+    if platform.strip():
+        where.append("platform = ?")
+        params.append(platform.strip())
+    order = _API_SORTS.get(sort, _API_SORTS["newest"])
+    with _con(_KB_PATH) as kb:
+        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+        crows = kb.execute(
+            f"SELECT url, title, platform, category, tags, summary_fa, author, status,"
+            f" saved_at, full_text FROM content{where_sql} ORDER BY {order}",
+            params,
+        ).fetchall()
+    doc_ids = _registry_doc_ids()
+    rows = []
+    for r in crows:
+        item = _doc_row(r, doc_ids)
+        if not item["view_url"]:
+            # fallback: عنوان کامل سند در Outline (اسناد قدیمیِ بدون رجیستری)
+            did_t = title_map.get((r["title"] or "").strip(), "")
+            if did_t:
+                item["view_url"] = f"/view/{did_t}"
+        if item["source_url"].startswith(("file://", "telegram-file://")):
+            item["source_host"] = "PDF"
+        rows.append(
+            {
+                "date": item["date"],
+                "title": item["title"],
+                "category": category_badge(item["category"]),
+                "platform": item["platform"] or "—",
+                "status": status_badge(item["status"]),
+                "author": item["author"] or "—",
+                "tags": "، ".join(item["tags"]),
+                "source_url": item["source_url"],
+                "source_host": item["source_host"] or "—",
+                "summary_fa": item["summary_fa"],
+                "summary_en": "",
+                "doc_url": "",
+                "view_url": item["view_url"],
+            }
+        )
+    headers = ["تاریخ", "تیتر", "دسته", "پلتفرم", "وضعیت", "نویسنده", "برچسب‌ها", "URL", "خلاصه (فا)"]
 
     tree = [
         {"id": d.get("id"), "title": d.get("title", "")}
@@ -257,6 +281,7 @@ async def kaghaz_view(request: Request, doc_id: str):
             "title": title_clean,
             "crumb": title_clean[:40],
             "doc_emoji": emoji,
+            "doc_id": doc_id,
             "properties": render_properties(meta_render),
             "body": render_blocks(parse(text)),
             "tree_docs": tree,

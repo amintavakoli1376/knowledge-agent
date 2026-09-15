@@ -1,0 +1,481 @@
+/* ============================================================
+   کاغذ Workspace — Design System (از DESIGN.md)
+   Persian RTL · Warm Paper Minimalist · Hairline precision
+   ============================================================ */
+
+/* ---------- Fonts (self-hosted) ---------- */
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/static/fonts/vazirmatn/Vazirmatn-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/static/fonts/vazirmatn/Vazirmatn-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/static/fonts/vazirmatn/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/static/fonts/vazirmatn/Vazirmatn-Bold.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/jetbrains-mono/JetBrainsMono-Medium.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+/* ---------- Tokens ---------- */
+:root {
+  /* کاغذ و مرکب */
+  --paper: #fbfbfa;
+  --paper-card: #ffffff;
+  --paper-spine: #f7f7f5;
+  --ink: #02093a;
+  --ink-muted: rgba(2, 9, 58, 0.6);
+  --ink-faint: rgba(2, 9, 58, 0.4);
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.10);
+
+  /* عمل */
+  --action: #0075de;
+  --action-hover: #0063bd;
+  --sky-tint: #e6f3fe;
+
+  /* اکسنت‌های عملکردی */
+  --amber: #ffb110;
+  --rose: #f64932;
+  --cerulean: #62aef0;
+
+  /* بج‌ها — fixed palette */
+  --primary-fixed: #d5e3ff;    --on-primary-fixed: #001b3c;
+  --secondary-fixed: #dee0ff;  --on-secondary-fixed: #0e1745;
+  --tertiary-fixed: #cee5ff;   --on-tertiary-fixed: #001d33;
+
+  /* خاکستری‌های ساختاری */
+  --surface-low: #f3f4f3;
+  --surface-container: #eeeeed;
+  --surface-high: #e8e8e7;
+  --surface-highest: #e2e2e2;
+
+  /* رادیوس — مطابق Shapes */
+  --r-sm: 4px;    /* micro UI */
+  --r-md: 8px;    /* buttons/inputs */
+  --r-xl: 12px;   /* cards/popovers */
+  --r-full: 9999px;
+
+  /* سایهٔ Level 2 */
+  --lift: 0 4px 16px rgba(2, 9, 58, 0.04);
+  --lift-md: 0 4px 16px rgba(2, 9, 58, 0.10);
+}
+
+/* ---------- Reset & base ---------- */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Vazirmatn', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  direction: rtl;
+  font-size: 1rem;
+  line-height: 1.85rem;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+code, pre, kbd { font-family: 'JetBrains Mono', monospace; }
+bdi { unicode-bidi: isolate; }
+a { color: var(--action); text-decoration: none; }
+a:hover { text-decoration: underline; }
+/* لینک‌های بلند (URL کامل پست لینکدین و…) صفحه را به‌هم نمی‌ریزند */
+.kg-p a, .kg-prop-v a, .kg-li a, .kg-callout-body a {
+  overflow-wrap: anywhere; word-break: break-word;
+}
+
+/* ---------- Layout: sidebar (right) + canvas ---------- */
+.kg-shell { display: flex; min-height: 100vh; }
+.kg-canvas:has(> .kg-page-wide) { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.kg-sidebar {
+  width: 260px; flex-shrink: 0;
+  background: var(--paper-spine);
+  border-left: 1px solid var(--hairline);
+  padding: 16px 12px;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.kg-canvas { flex: 1; min-width: 0; }
+
+/* نوار بالا */
+.kg-topbar {
+  position: sticky; top: 0; z-index: 20;
+  height: 48px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 24px;
+  background: rgba(251, 251, 250, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--hairline);
+}
+.kg-topbar .kg-crumb { color: var(--ink-muted); font-size: 0.875rem; font-weight: 500; }
+.kg-topbar .kg-crumb b { color: var(--ink); font-weight: 600; }
+
+/* محتوای سند */
+.kg-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+/* صفحهٔ شاخص: بدون اسکرول صفحهٔ اصلی — قاب جدول دقیقاً بقیهٔ viewport را
+   می‌گیرد (h: flex با min-height:0)؛ اسکرول عمودی/افقی فقط داخل قاب است. */
+.kg-page-wide {
+  max-width: none;
+  width: 100%;
+  min-width: 0;                 /* فِلِکس: کِشش به پهنای واقعی کانواس، نه min-content جدول —
+                                   وگرنه قاب به اندازهٔ خود جدول باز می‌شود، کانواس کات می‌کند
+                                   و اسکرول افقی هرگز داخل قاب نمی‌سازد */
+  padding: 0 0 0;
+  /* دسکتاپ: 100vh منهای topbar. موبایل: svh (کوچک‌ترین viewport ممکن) تا
+     نوار آدرس مرورگر موبایل باعث سرریز و اسکرول اضافهٔ صفحه نشود. */
+  height: calc(100vh - 48px);
+  height: calc(100svh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;             /* اسکرول صفحهٔ اصلی اینجا می‌میرد */
+}
+.kg-page-wide .kg-title,
+.kg-page-wide .kg-index-title { margin: 0; }
+/* بلوک عنوان + فوتر در جریان عادی، جدول flex-grow می‌گیرد */
+.kg-page-wide > .kg-index-head {
+  padding: 20px 24px 12px;
+  flex-shrink: 0;
+}
+.kg-page-wide > .kg-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;                /* شرط اسکرول داخلی در flex */
+  margin: 0 24px 16px;
+  max-height: none;
+}
+.kg-page-wide > .kg-index-foot {
+  flex-shrink: 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 0 24px 12px;
+}
+@media (min-width: 1024px) {
+  .kg-page-wide > .kg-index-head { padding: 24px 24px 12px; }
+}
+/* (پاک‌سازی — قوانین قدیمی عرض-کامل با بلوک flex بالا جایگزین شدند) */
+
+/* سایدبار — درخت */
+.kg-tree-title {
+  font-size: 0.75rem; font-weight: 600; color: var(--ink-faint);
+  padding: 8px 8px 6px; letter-spacing: 0;
+}
+.kg-tree a {
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 8px; border-radius: 6px;
+  color: var(--ink-muted); font-size: 0.875rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kg-tree a:hover { background: #f0f0ed; color: var(--ink); text-decoration: none; }
+.kg-tree a.active { background: var(--sky-tint); color: var(--action); font-weight: 500; }
+
+/* ---------- Document header ---------- */
+.kg-doc-icon {
+  width: 64px; height: 64px; border-radius: 12px;
+  background: var(--paper-card); border: 1px solid var(--hairline);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2rem; box-shadow: var(--lift);
+  margin-bottom: 16px;
+}
+.kg-title {
+  font-size: 2rem; font-weight: 700; line-height: 1.3;
+  margin: 0 0 20px; color: var(--ink); letter-spacing: 0;
+}
+.kg-index-title { font-size: 1.625rem; }
+
+/* ---------- Properties (متادیتا) ---------- */
+.kg-props { border-top: 1px solid var(--hairline); padding-top: 12px; margin-bottom: 8px; }
+.kg-prop {
+  display: grid; grid-template-columns: 140px 1fr; gap: 8px;
+  align-items: center; padding: 5px 8px; border-radius: 8px;
+  font-size: 0.875rem; line-height: 1.5rem;
+}
+.kg-prop:hover { background: rgba(243, 244, 243, 0.6); }
+.kg-prop-k { color: var(--ink-muted); font-weight: 500; }
+.kg-prop-v { color: var(--ink); }
+
+/* ---------- Badges (تگ‌های رنگی — بدون ایموجی) ---------- */
+.kg-badge {
+  display: inline-flex; align-items: center;
+  height: 22px; padding: 0 8px; border-radius: var(--r-full);
+  font-size: 0.75rem; font-weight: 500; line-height: 1;
+  white-space: nowrap;
+}
+.kg-badge.blue   { background: var(--primary-fixed);   color: var(--on-primary-fixed); }
+.kg-badge.indigo { background: var(--secondary-fixed); color: var(--on-secondary-fixed); }
+.kg-badge.sky    { background: var(--tertiary-fixed);  color: var(--on-tertiary-fixed); }
+.kg-badge.amber  { background: rgba(255, 177, 16, 0.15); color: #8a5a00; }
+.kg-badge.rose   { background: rgba(246, 73, 50, 0.10);  color: #a32715; }
+.kg-badge.green  { background: rgba(46, 125, 50, 0.12);  color: #2e7d32; }
+.kg-badge.gray   { background: var(--surface-high);      color: var(--ink-muted); }
+
+/* نقطهٔ رنگی اولویت (مثل ماتریس code.html) */
+.kg-dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.kg-dot::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--dot, var(--outline, #717784));
+}
+.kg-dot.high   { --dot: var(--action); color: var(--action); }
+.kg-dot.medium { --dot: #717784; color: var(--ink-muted); }
+.kg-dot.low    { --dot: rgba(113, 119, 132, 0.6); color: var(--ink-faint); }
+
+/* ---------- Blocks ---------- */
+.kg-blocks > * + * { margin-top: 14px; }
+
+/* پاراگراف */
+.kg-p { margin: 0; color: var(--ink); font-size: 1rem; }
+
+/* تیترها */
+.kg-h1 { font-size: 1.5rem; font-weight: 700; margin: 28px 0 4px; }
+.kg-h2 { font-size: 1.25rem; font-weight: 600; margin: 24px 0 4px; }
+.kg-h3 { font-size: 1.125rem; font-weight: 600; margin: 20px 0 4px; }
+
+/* نقل‌قول */
+.kg-quote {
+  margin: 0; padding: 10px 16px;
+  border-right: 3px solid var(--cerulean);
+  background: var(--paper);
+  color: var(--ink-muted); border-radius: 8px;
+}
+
+/* کالوت — مثل Block 1 در code.html */
+.kg-callout {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 16px; border-radius: 12px;
+  background: rgba(213, 227, 255, 0.2);
+}
+.kg-callout-icon {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  background: var(--primary-fixed); color: var(--action);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+}
+.kg-callout-body { flex: 1; font-size: 1rem; }
+.kg-callout-body strong { color: var(--action); font-weight: 600; }
+
+/* چک‌لیست */
+.kg-todo { display: flex; align-items: flex-start; gap: 12px; padding: 4px 0; }
+.kg-todo input[type="checkbox"] {
+  width: 16px; height: 16px; margin-top: 7px; border-radius: 4px;
+  accent-color: var(--action); cursor: default; flex-shrink: 0;
+}
+.kg-todo.done label {
+  color: var(--ink-muted); text-decoration: line-through;
+}
+.kg-todo label { flex: 1; cursor: default; }
+
+/* لیست */
+.kg-ul, .kg-ol { margin: 0; padding-right: 24px; color: var(--ink); }
+.kg-li { margin: 2px 0; }
+
+/* جدول — Notion-like کاغذ */
+.kg-table-wrap {
+  overflow-x: auto; border-radius: 12px;
+  background: var(--paper-card);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--lift);
+}
+/* اسکرول افقی مینیمال — همیشه قابل دیدن (اندروید overlay را بی‌اثر می‌کند) */
+.kg-table-wrap { scrollbar-width: thin; scrollbar-color: rgba(2, 9, 58, 0.35) rgba(2, 9, 58, 0.07); }
+.kg-table-wrap::-webkit-scrollbar { height: 8px; }
+.kg-table-wrap::-webkit-scrollbar-track {
+  background: rgba(2, 9, 58, 0.07);
+  border-radius: 999px;
+}
+.kg-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(2, 9, 58, 0.35);
+  border-radius: 999px;
+}
+.kg-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(2, 9, 58, 0.5); }
+/* جدول بلند: اسکرول داخل قاب (نه تهِ کل جدول) + هدر چسبان
+   (ارتفاع قاب الان توسط flex در .kg-page-wide تعیین می‌شود) */
+.kg-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f1f2f1;
+  box-shadow: 0 1px 0 var(--hairline);
+}
+.kg-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 0.875rem; text-align: right;
+}
+.kg-table thead tr { background: rgba(243, 244, 243, 0.7); }
+.kg-table th {
+  padding: 10px 16px; font-weight: 600; color: var(--ink-muted);
+  border-bottom: 1px solid var(--hairline); white-space: nowrap;
+}
+.kg-table td {
+  padding: 12px 16px; color: var(--ink);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  vertical-align: top;
+}
+.kg-table tbody tr:last-child td { border-bottom: none; }
+.kg-table tbody tr:hover { background: rgba(243, 244, 243, 0.4); }
+
+/* کد — بلوک تیره با header */
+.kg-code {
+  border-radius: 12px; overflow: hidden;
+  background: var(--inverse, #2f3130); box-shadow: var(--lift-md);
+}
+.kg-code-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(241, 241, 240, 0.10);
+  color: rgba(241, 241, 240, 0.8); font-size: 0.75rem;
+}
+.kg-code-dots { display: flex; gap: 6px; align-items: center; }
+.kg-code-dots i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.kg-code-dots i:nth-child(1) { background: rgba(186, 26, 26, 0.7); }
+.kg-code-dots i:nth-child(2) { background: rgba(190, 198, 254, 0.7); }
+.kg-code-dots i:nth-child(3) { background: rgba(0, 117, 222, 0.7); }
+.kg-code-copy {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: none; cursor: pointer;
+  color: rgba(241, 241, 240, 0.8); font-family: inherit; font-size: 0.75rem;
+  padding: 4px 10px; border-radius: 8px;
+}
+.kg-code-copy:hover { background: rgba(226, 226, 226, 0.2); color: #f1f1f0; }
+.kg-code pre {
+  margin: 0; padding: 16px; overflow-x: auto;
+  direction: ltr; text-align: left;
+  color: #f9f9f8; font-size: 0.875rem; line-height: 1.6rem;
+}
+.kg-code-inline {
+  background: rgba(98, 174, 240, 0.12); color: var(--ink);
+  padding: 2px 6px; border-radius: 4px; font-size: 0.85em;
+}
+
+/* جداکنندهٔ hairline */
+.kg-hr { border: none; height: 1px; background: var(--surface-high); margin: 24px 0; }
+
+/* فوتر سند */
+.kg-footer {
+  margin-top: 48px; padding-top: 20px;
+  border-top: 1px solid var(--surface-high);
+  display: flex; align-items: center; justify-content: space-between;
+  color: var(--ink-muted); font-size: 0.875rem; flex-wrap: wrap; gap: 12px;
+}
+
+/* ---------- Responsive ---------- */
+.kg-menu-btn {
+  display: none; border: none; background: transparent;
+  color: var(--ink); font-size: 20px; cursor: pointer; padding: 4px 8px;
+  border-radius: 8px;
+}
+.kg-menu-btn:hover { background: var(--surface-low); }
+@media (max-width: 1024px) {
+  .kg-sidebar {
+    position: fixed; right: 0; top: 0; z-index: 40;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    box-shadow: -8px 0 24px rgba(2, 9, 58, 0.10);
+  }
+  .kg-sidebar.open { transform: translateX(0); }
+  .kg-menu-btn { display: inline-flex; }
+}
+@media (max-width: 768px) {
+  .kg-page { padding: 24px 16px 64px; }
+  .kg-title { font-size: 1.625rem; }
+  .kg-prop { grid-template-columns: 110px 1fr; }
+  /* صفحهٔ شاخص: پدینگ حذف‌شدهٔ .kg-page را برنمی‌گردانیم — قاب جدول تا
+     پایینِ viewport می‌آید (جای اسکرول افقی دیده می‌شود) و صفحه اصلی اسکرول ندارد. */
+  .kg-page-wide { padding: 0; }
+}
+
+/* ---------- Utility ---------- */
+.kg-muted { color: var(--ink-muted); }
+.kg-small { font-size: 0.875rem; }
+
+/* ---------- ⌘K command palette (U-C3) ---------- */
+.kg-cmdk-btn {
+  margin-inline-start: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 10px;
+  background: var(--paper-card); border: 1px solid var(--hairline);
+  border-radius: var(--r-md); color: var(--ink-faint);
+  font-family: inherit; font-size: 0.8125rem; cursor: pointer;
+}
+.kg-cmdk-btn kbd {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.6875rem;
+  background: var(--surface-low); border: 1px solid var(--hairline);
+  border-radius: var(--r-sm); padding: 1px 5px; color: var(--ink-muted);
+}
+.kg-cmdk-veil {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(2, 9, 58, 0.15); backdrop-filter: blur(2px);
+  align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.kg-cmdk-veil.open { display: flex; }
+.kg-cmdk {
+  width: min(560px, calc(100vw - 32px));
+  background: var(--paper-card); border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xl); box-shadow: 0 8px 32px rgba(2, 9, 58, 0.14);
+  padding: 12px; direction: rtl;
+}
+.kg-cmdk-input {
+  width: 100%; height: 40px; padding: 0 12px;
+  border: 1px solid var(--hairline); border-radius: var(--r-md);
+  font-family: inherit; font-size: 1rem; color: var(--ink);
+  text-align: right; outline: none; background: var(--paper-card);
+}
+.kg-cmdk-input:focus { border-color: var(--action); box-shadow: 0 0 0 2px rgba(0, 117, 222, 0.15); }
+.kg-cmdk-hint { padding: 6px 4px 2px; }
+.kg-cmdk-results { margin-top: 6px; max-height: 50vh; overflow-y: auto; }
+.kg-cmdk-item {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px; border-radius: var(--r-md);
+}
+.kg-cmdk-item:hover { background: var(--sky-tint); text-decoration: none; }
+.kg-cmdk-title { color: var(--ink); font-weight: 500; font-size: 0.9375rem; }
+.kg-cmdk-snippet { color: var(--ink-muted); font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kg-cmdk-empty { padding: 16px; text-align: center; color: var(--ink-faint); }
+.kg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- Status bar + versions (U-C4) ---------- */
+.kg-statusbar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 16px; padding: 6px 8px;
+  border: 1px solid var(--hairline); border-radius: var(--r-md);
+  background: var(--paper-card);
+}
+.kg-st-act {
+  height: 28px; padding: 0 10px;
+  background: transparent; border: 1px solid var(--hairline);
+  border-radius: var(--r-md); color: var(--ink-muted);
+  font-family: inherit; font-size: 0.8125rem; cursor: pointer;
+}
+.kg-st-act:hover { background: var(--sky-tint); color: var(--action); border-color: transparent; }
+.kg-versions { margin: 0 0 16px; padding: 8px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--paper-spine); }
+.kg-version-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; }
+.kg-cnt {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full);
+  background: var(--sky-tint); color: var(--action); font-size: 0.6875rem; font-weight: 600;
+}
+.kg-concept-modal {
+  position: absolute; top: 12vh; left: 50%; transform: translateX(-50%);
+  width: min(480px, calc(100vw - 32px));
+  background: var(--paper-card); border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xl); box-shadow: 0 8px 32px rgba(2, 9, 58, 0.14);
+  padding: 20px; max-height: 70vh; overflow-y: auto;
+}
+.kg-concept-modal h3 { margin: 0 0 4px; font-size: 1.25rem; }
+.kg-concept-modal a { display: block; padding: 4px 0; }
