@@ -19,6 +19,7 @@ from src.config import settings
 from src.render import registry
 from src.render.api_views import (
     _KB_PATH,
+    _REG_PATH,
     _con,
     _doc_row,
     _registry_doc_ids,
@@ -281,17 +282,49 @@ async def kaghaz_view(request: Request, doc_id: str):
     emoji_m = _emoji_re.match(title.strip())
     emoji = emoji_m.group(1) if emoji_m else "📄"
 
-    # URL منبع و متادیتا از جدول شاخص (join با URL)
+    # URL منبع و متادیتا: اول رجیستری (doc_id→source_url)، بعد md (اسناد قدیمی با «لینک اصلی»)
     source_url = ""
+    real_url = ""
+    try:
+        with _con(_REG_PATH) as reg_con:
+            rr = reg_con.execute(
+                "SELECT source_url FROM outline_docs WHERE doc_id = ?", (doc_id,)
+            ).fetchone()
+            if rr and rr["source_url"]:
+                real_url = rr["source_url"]
+    except Exception:  # noqa: BLE001
+        pass
     m = _source_re.search(text)
     if m:
         source_url = m.group(1)
+    source_url = real_url or source_url
     meta_render: dict = {}
     if source_url:
         _, idx = _index_meta_by_url()
         row = idx.get(source_url.rstrip("/"))
+        if not row:
+            # join با کلید نرمال‌شده (utm/انتهای اسلش) — همان الگوی _registry_doc_ids
+            from urllib.parse import urlsplit as _us
+
+            def _nk(u: str) -> str:
+                try:
+                    p = _us(u)
+                    return (p.netloc + p.path.rstrip("/")).lower()
+                except Exception:  # noqa: BLE001
+                    return u
+
+            want = _nk(source_url)
+            for u, cells in idx.items():
+                if _nk(u) == want:
+                    row = cells
+                    break
         if row:
             mr = _cell_row(row)
+            # نمایشی: URL واقعی منبع (رجیستری) — نه self-link سرور؛ جدول شاخص self-link را
+            # در cells[1] دارد ولی cells[7] لینک واقعی است. real_url همیشه معتبرترین است.
+            display_url = real_url or mr["source_url"]
+            if display_url.startswith("file://") or display_url.startswith("telegram-file://"):
+                display_url = ""  # PDF محلی — لینک بیرونی ندارد
             meta_render = {
                 "date": mr["date"],
                 "category": mr["category"],
@@ -299,8 +332,8 @@ async def kaghaz_view(request: Request, doc_id: str):
                 "status": mr["status"],
                 "author": mr["author"],
                 "tags": mr["tags"],
-                "source_url": mr["source_url"],
-                "source_host": _host(mr["source_url"]) if mr["source_url"] else "",
+                "source_url": display_url,
+                "source_host": _host(display_url) if display_url else "",
             }
 
     tree_docs = registry.list_collection_docs(limit=40)

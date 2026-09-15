@@ -535,10 +535,13 @@ a:hover { text-decoration: underline; }
 
 /* فوتر سند */
 .kg-footer {
-  margin-top: 48px; padding-top: 20px;
+  margin: 32px 40px 0; padding: 20px 0 0;
   border-top: 1px solid var(--surface-high);
   display: flex; align-items: center; justify-content: space-between;
   color: var(--ink-muted); font-size: 0.875rem; flex-wrap: wrap; gap: 12px;
+}
+@media (max-width: 768px) {
+  .kg-footer { margin: 24px 20px 0; }
 }
 
 /* ---------- Responsive ---------- */

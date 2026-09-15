@@ -8,6 +8,7 @@ heading/paragraph/callout/todo/code/table/list/quote/hr + بج‌های
 from __future__ import annotations
 
 import html
+import re
 from typing import Any
 
 from src.render.parser import Block, inline_html
@@ -136,6 +137,13 @@ def render_blocks(blocks: list[Block]) -> str:
             else:
                 continue
         filtered.append(b)
+    # R-fix (2026-09-15): اسناد قدیمی دو خط تکراری «منبع/برچسبها» در انتهای md دارند —
+    # این‌ها الان در properties بالای سند هست؛ از بدنه حذف می‌شوند (نمایشی، دیتابیس دست نمی‌خورد).
+    _tail_re = re.compile(r"^\s*(\*\*)?\s*منبع\s*:|^\s*(\*\*)?\s*برچسب\s*ها\s*:")
+    while filtered and filtered[-1].type == "paragraph" and _tail_re.match(
+        re.sub(r"<[^>]+>", "", filtered[-1].data.get("html", ""))
+    ):
+        filtered.pop()
     parts = [render_block(b) for b in filtered]
     return "\n".join(p for p in parts if p)
 
