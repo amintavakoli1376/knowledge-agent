@@ -105,9 +105,64 @@ def init_db() -> None:
         except sqlite3.OperationalError:
             # FTS5 unavailable (very old SQLite) — content table still works
             pass
+
+        # U4-min: نسخه‌بندی ساده — snapshot خودکار قبل از رونویسی هر سند موجود
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS doc_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL,
+                    full_text TEXT NOT NULL,
+                    title TEXT,
+                    summary_fa TEXT,
+                    tags TEXT,
+                    category TEXT,
+                    saved_at TEXT,
+                    snapshotted_at TEXT DEFAULT (datetime('now'))
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_doc_versions_url ON doc_versions(url, id DESC)"
+            )
+        except sqlite3.OperationalError:
+            pass  # versioning best-effort — نباید save را بشکند
         conn.commit()
     finally:
         conn.close()
+
+
+_MAX_VERSIONS_PER_DOC = 5
+
+
+def _snapshot_if_exists(conn: sqlite3.Connection, url: str) -> None:
+    """قبل از رونویسی: نسخهٔ فعلی سند را در doc_versions کپی می‌کند (U4-min).
+
+    فقط وقتی ردیف موجود واقعاً متن دارد؛ قدیمی‌ترین نسخه‌ها حذف می‌شوند (آخرین ۵).
+    best-effort — هیچ خطایی به بالا نمی‌رود.
+    """
+    try:
+        row = conn.execute(
+            "SELECT full_text, title, summary_fa, tags, category, saved_at"
+            " FROM content WHERE url IN (?, ?)",
+            (url, url.rstrip("/")),
+        ).fetchone()
+        if not row or not (row[0] or "").strip():
+            return  # سند خالی/ناموجود → نسخه‌ای برای نگه‌داشتن نیست
+        conn.execute(
+            "INSERT INTO doc_versions (url, full_text, title, summary_fa, tags, category, saved_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (url, row[0], row[1], row[2], row[3], row[4], row[5]),
+        )
+        conn.execute(
+            "DELETE FROM doc_versions WHERE url IN (?, ?) AND id NOT IN ("
+            "  SELECT id FROM doc_versions WHERE url IN (?, ?) ORDER BY id DESC LIMIT ?"
+            ")",
+            (url, url.rstrip("/"), url, url.rstrip("/"), _MAX_VERSIONS_PER_DOC),
+        )
+    except Exception as e:  # noqa: BLE001 — snapshot نباید save را بشکند
+        logging.getLogger(__name__).warning(f"doc snapshot skipped: {e}")
 
 
 def save_content(content: ExtractedContent, analysis=None) -> None:
@@ -120,6 +175,8 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
         init_db()
         conn = _get_connection()
         try:
+            # U4-min: اگر ردیف موجود است، قبل از رونویسی snapshot بگیر
+            _snapshot_if_exists(conn, content.url)
             conn.execute(
                 """
                 INSERT INTO content
@@ -167,6 +224,8 @@ def save_analysis(url: str, analysis) -> None:
         init_db()
         conn = _get_connection()
         try:
+            # U4-min: قبل از بازنویسی خلاصه/برچسب‌ها، نسخهٔ فعلی را نگه دار
+            _snapshot_if_exists(conn, url)
             # LLM-Wiki 1a: تحلیل ساختارمند — اگر مدل پاس ۱ را نداد، خالی ذخیره می‌شود
             meta = {
                 "entities": list(getattr(analysis, "entities", []) or []),

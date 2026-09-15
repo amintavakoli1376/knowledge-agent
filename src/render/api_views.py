@@ -24,6 +24,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from src.config import settings
+from src.storage.sqlite_store import _snapshot_if_exists
 
 logger = logging.getLogger(__name__)
 
@@ -650,4 +651,105 @@ async def api_graph(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
         "edges": edges,
         "total_nodes": len(nodes),
         "total_edges": len(edges),
+    }
+
+
+# ---------------- U4-min — نسخه‌بندی ساده (snapshot قبل از رونویسی) ----------------
+
+
+@router.get("/docs/{doc_id}/versions")
+async def api_doc_versions(doc_id: str) -> dict[str, Any]:
+    """فهرست نسخه‌های ثبت‌شدهٔ سند (بدون متن کامل — فقط متادیتا)."""
+    source_url = _content_url_for(doc_id)
+    with _con(_KB_PATH) as con:
+        rows = con.execute(
+            "SELECT id, title, summary_fa, category, saved_at, snapshotted_at,"
+            " length(full_text) AS chars"
+            " FROM doc_versions WHERE url IN (?, ?) ORDER BY id DESC",
+            (source_url, source_url.rstrip("/")),
+        ).fetchall()
+    return {
+        "doc_id": doc_id,
+        "versions": [
+            {
+                "version_id": r["id"],
+                "title": _fix_persian(r["title"] or ""),
+                "summary_fa": _fix_persian(r["summary_fa"] or ""),
+                "category": r["category"] or "",
+                "saved_at": r["saved_at"] or "",
+                "snapshotted_at": r["snapshotted_at"] or "",
+                "chars": r["chars"] or 0,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+        "max_kept": 5,
+    }
+
+
+@router.get("/docs/{doc_id}/versions/{version_id}")
+async def api_doc_version_detail(doc_id: str, version_id: int) -> dict[str, Any]:
+    """محتوای کامل یک نسخه (markdown + متادیتای ثبت‌شده هنگام snapshot)."""
+    source_url = _content_url_for(doc_id)
+    with _con(_KB_PATH) as con:
+        r = con.execute(
+            "SELECT id, url, full_text, title, summary_fa, tags, category, saved_at, snapshotted_at"
+            " FROM doc_versions WHERE id = ? AND url IN (?, ?)",
+            (version_id, source_url, source_url.rstrip("/")),
+        ).fetchone()
+    if not r:
+        raise HTTPException(404, "Version not found")
+    return {
+        "doc_id": doc_id,
+        "version_id": r["id"],
+        "title": _fix_persian(r["title"] or ""),
+        "markdown": r["full_text"] or "",
+        "summary_fa": _fix_persian(r["summary_fa"] or ""),
+        "tags": _parse_tags(r["tags"]),
+        "category": r["category"] or "",
+        "saved_at": r["saved_at"] or "",
+        "snapshotted_at": r["snapshotted_at"] or "",
+    }
+
+
+@router.post("/docs/{doc_id}/versions/{version_id}/restore")
+async def api_doc_version_restore(doc_id: str, version_id: int) -> dict[str, Any]:
+    """بازگردانی نسخه: نسخهٔ فعلی اول snapshot می‌شود، بعد نسخهٔ انتخابی جایش می‌نشیند."""
+    source_url = _content_url_for(doc_id)
+    with _con(_KB_PATH) as con:
+        v = con.execute(
+            "SELECT full_text, title, summary_fa, tags, category FROM doc_versions"
+            " WHERE id = ? AND url IN (?, ?)",
+            (version_id, source_url, source_url.rstrip("/")),
+        ).fetchone()
+        if not v:
+            raise HTTPException(404, "Version not found")
+        # بازگردانی امن: قبل از رونویسی، وضعیت فعلی خودش snapshot می‌شود
+        _snapshot_if_exists(con, source_url)
+        con.execute(
+            "UPDATE content SET full_text = ?, title = COALESCE(NULLIF(?, ''), title),"
+            " summary_fa = COALESCE(NULLIF(?, ''), summary_fa),"
+            " tags = COALESCE(NULLIF(?, ''), tags),"
+            " category = COALESCE(NULLIF(?, ''), category)"
+            " WHERE url IN (?, ?)",
+            (
+                v["full_text"],
+                v["title"],
+                v["summary_fa"],
+                v["tags"],
+                v["category"],
+                source_url,
+                source_url.rstrip("/"),
+            ),
+        )
+        con.commit()
+        restored_chars = len(v["full_text"] or "")
+        # نسخهٔ بازگردانده‌شده از صف نسخه‌ها حذف می‌شود (دیگر «قبلی» نیست)
+        con.execute("DELETE FROM doc_versions WHERE id = ?", (version_id,))
+        con.commit()
+    return {
+        "doc_id": doc_id,
+        "restored_version_id": version_id,
+        "restored_chars": restored_chars,
+        "note": "نسخهٔ فعلی قبل از بازگردانی snapshot شد",
     }
