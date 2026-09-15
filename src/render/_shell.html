@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=12">
+<link rel="stylesheet" href="/static/kaghaz.css?v=13">
 </head>
 <body>
 <div class="kg-shell" id="kgShell">
@@ -81,6 +81,12 @@
   </div>
 </div>
 
+<!-- تولبار شناور انتخاب متن (R4) — فقط کپی فعال در read-layer -->
+<div class="kg-sel-toolbar" id="kgSelToolbar">
+  <button class="kg-sel-btn" title="کپی متن انتخابی" id="kgSelCopy">کپی</button>
+  <span class="kg-sel-sep"></span>
+  <button class="kg-sel-btn" title="جست‌وجوی این عبارت" id="kgSelSearch">جست‌وجو</button>
+</div>
 <!-- ⌘K command palette — متصل به /api/search -->
 <div class="kg-cmdk-veil" id="kgCmdkVeil">
   <div class="kg-cmdk" role="dialog" aria-label="جست‌وجو">
@@ -193,6 +199,45 @@
     fetch('/api/docs/'+docId+'/versions/'+vid+'/restore', {method:'POST'})
       .then(r=>r.json()).then(()=>{ window.location.reload(); });
   };
+})();
+</script>
+<script>
+// ===== تولبار شناور انتخاب متن (R4) =====
+(function(){
+  var bar = document.getElementById('kgSelToolbar');
+  if (!bar || !document.querySelector('.kg-blocks')) return;
+  var selText = '';
+  document.addEventListener('mouseup', function(){
+    setTimeout(function(){
+      var s = window.getSelection();
+      selText = (s && s.toString().trim()) || '';
+      if (selText.length > 1) {
+        var r = s.getRangeAt(0).getBoundingClientRect();
+        bar.style.top = (r.top + window.scrollY - 44) + 'px';
+        bar.style.left = Math.max(8, r.left + r.width/2 - 70) + 'px';
+        bar.classList.add('open');
+      } else {
+        bar.classList.remove('open');
+      }
+    }, 10);
+  });
+  document.getElementById('kgSelCopy').addEventListener('click', function(){
+    navigator.clipboard.writeText(selText).then(function(){
+      var b = document.getElementById('kgSelCopy');
+      b.textContent = 'کپی شد!';
+      setTimeout(function(){ b.textContent = 'کپی'; bar.classList.remove('open'); }, 1200);
+    });
+  });
+  document.getElementById('kgSelSearch').addEventListener('click', function(){
+    var veil = document.getElementById('kgCmdkVeil');
+    var input = document.getElementById('kgCmdkInput');
+    if (veil && input) {
+      veil.classList.add('open');
+      input.value = selText;
+      input.focus();
+      input.dispatchEvent(new Event('input'));
+    }
+  });
 })();
 </script>
 <script>

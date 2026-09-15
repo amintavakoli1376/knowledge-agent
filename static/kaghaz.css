@@ -603,6 +603,41 @@ a:hover { text-decoration: underline; }
   .kg-kpi-spark { height: 22px; }
 }
 
+/* ---------- بلوک گاتر (R4) — drag/add در حاشیهٔ راست، مثل طرح ---------- */
+.kg-has-gutter { position: relative; }
+.kg-has-gutter::before,
+.kg-has-gutter::after {
+  position: absolute; inset-inline-start: -30px; top: 2px;
+  opacity: 0; transition: opacity 0.15s;
+  color: var(--ink-faint); font-size: 0.8125rem; line-height: 1.85rem;
+  user-select: none; pointer-events: none;
+}
+.kg-has-gutter::before { content: '⠿'; }   /* drag_indicator — شش‌نقطه بریل */
+.kg-has-gutter::after { content: '+'; inset-inline-start: -46px; font-size: 1rem; }
+.kg-has-gutter:hover::before, .kg-has-gutter:hover::after { opacity: 0.7; }
+@media (max-width: 900px) { .kg-has-gutter::before, .kg-has-gutter::after { display: none; } }
+
+/* ---------- تولبار شناور انتخاب متن (R4) ---------- */
+.kg-sel-toolbar {
+  position: absolute; z-index: 60;
+  display: none; align-items: center; gap: 2px;
+  background: var(--inverse, #2f3130); color: #f1f1f0;
+  border-radius: 8px; padding: 4px 6px;
+  box-shadow: 0 4px 16px rgba(2, 9, 58, 0.25);
+}
+.kg-sel-toolbar.open { display: flex; }
+.kg-sel-btn {
+  height: 26px; padding: 0 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: none; cursor: pointer;
+  color: rgba(241, 241, 240, 0.85); font-family: inherit;
+  font-size: 0.75rem; font-weight: 500; border-radius: 6px;
+}
+.kg-sel-btn:hover { background: rgba(226, 226, 226, 0.2); color: #fff; }
+.kg-sel-btn b { font-weight: 700; } .kg-sel-btn i { font-style: italic; }
+.kg-sel-btn s { text-decoration: line-through; }
+.kg-sel-sep { width: 1px; height: 14px; background: rgba(241, 241, 240, 0.2); margin: 0 3px; }
+
 /* ---------- Utility ---------- */
 .kg-muted { color: var(--ink-muted); }
 .kg-small { font-size: 0.875rem; }
