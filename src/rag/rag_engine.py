@@ -211,6 +211,7 @@ class RagEngine:
 - پاسخ را به فارسی روان بده.
 - اگر پاسخ در متن‌ها نبود، صادقانه بگو و حدس نزن.
 - اگر چند سند مرتبط هست، از همهٔ آن‌ها ترکیب کن و راهکارهای عملی را برجسته کن.
+- **هر ادعا/گزاره‌ای که از یک سند می‌آید، در انتها شمارهٔ همان سند را داخل کروشه بیاور** — مثل [1] یا [2] یا [+] (برای سندهای گراف-گسترش‌یافته). این استنادها اجباری‌اند.
 - **هیچ بخش «منابع» یا لیست لینک در پاسخ ننویس** — منابع جداگانه به کاربر نمایش داده می‌شود."""
 
         llm = self._get_llm()
@@ -256,8 +257,32 @@ class RagEngine:
                 seen_urls.add(url)
                 sources.append(url)
 
-        # USER RULE: فقط اولین منبع (پرت releavанс) نمایش داده شود — نه لیست کامل
-        if sources:
+        # 2c: فهرست استنادها — فقط سندهایی که در پاسخ واقعاً به آن‌ها ارجاع شده ([1]، [2]، [+])
+        import re as _re
+
+        cited_nums = set(_re.findall(r"\[(\d+)\]", answer))
+        cited_plus = "[+]" in answer
+        cite_lines = []
+        for i, hit in enumerate(merged, 1):
+            if str(i) not in cited_nums:
+                continue
+            url = hit.get("url") or ""
+            title = (hit.get("title") or "منبع").split("\n")[0][:70]
+            if url:
+                cite_lines.append(f"[{i}] [{title}]({url})")
+        if cited_plus:
+            # سندهای گراف-گسترش‌یافته — عنوانشان از context_parts
+            for cid in expanded_ids:
+                with _get_connection() as conn:
+                    r = conn.execute("SELECT url, title FROM content WHERE id = ?", (cid,)).fetchone()
+                if r and r["url"]:
+                    t = (r["title"] or "منبع").split("\n")[0][:70]
+                    cite_lines.append(f"[+] [{t}]({r['url']})")
+
+        # USER RULE: فقط اولین منبع (پرت relevانس) اگر استنادی استفاده نشده بود
+        if cite_lines:
+            footer = "\n\n📎 **منابع cited:**\n" + "\n".join(cite_lines[:4])
+        elif sources:
             first_title = (merged[0].get("title") or "منبع").split("\n")[0][:70]
             footer = f"\n\n📎 **منبع اصلی:** [{first_title}]({sources[0]})"
         else:
