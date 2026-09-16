@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=16">
+<link rel="stylesheet" href="/static/kaghaz.css?v=17">
 </head>
 <body>
 <div class="kg-shell" id="kgShell">
@@ -146,7 +146,7 @@
       var list = (d.concepts||[]).filter(c=>c.doc_count>=2).slice(0,10);
       if(!list.length){ box.innerHTML='<span class="kg-small kg-muted" style="padding:0 8px">هنوز مفهوم تکراری نیست</span>'; return; }
       box.innerHTML = list.map(c=>
-        '<a href="/api/concepts/'+encodeURIComponent(c.norm)+'" title="'+c.display+' ('+c.doc_count+' سند)" onclick="kgConcept(event,this)">'+c.display+' <span class="kg-cnt">'+c.doc_count+'</span></a>'
+        '<a href="/concept/'+encodeURIComponent(c.norm)+'" title="'+c.display+' ('+c.doc_count+' سند)" onclick="kgToggleSidebar(false)">'+c.display+' <span class="kg-cnt">'+c.doc_count+'</span></a>'
       ).join('');
     }).catch(()=>{ box.innerHTML=''; });
   }

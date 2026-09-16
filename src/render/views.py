@@ -270,6 +270,38 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
     )
 
 
+@router.get("/concept/{norm}", response_class=HTMLResponse)
+async def kaghaz_concept(request: Request, norm: str):
+    """2a — صفحهٔ مفهومی خودکار: همهٔ اسناد حامل مفهوم + مفاهیم هم‌جوار (بدون LLM)."""
+    import urllib.parse as _up
+
+    norm_dec = _up.unquote(norm)
+    data = None
+    try:
+        # استفاده از همان منطق API (resolve ZWNJ + اسناد + هم‌جوار)
+        from src.render.api_views import api_concept_page  # noqa: F401 — فقط برای اطمینان از import
+
+        data = await api_concept_page(norm_dec)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise HTTPException(404, "Unknown concept")
+        raise
+    return templates.TemplateResponse(
+        request,
+        "kaghaz_concept.html",
+        {
+            "title": data["display"],
+            "crumb": data["display"][:40],
+            "doc_count": data["doc_count"],
+            "docs": data["docs"],
+            "related": data.get("related_concepts", []),
+            "tree_docs": [],
+            "active": "",
+            "active_doc": "",
+        },
+    )
+
+
 @router.get("/view/{doc_id}", response_class=HTMLResponse)
 async def kaghaz_view(request: Request, doc_id: str):
     doc = registry.get_document(doc_id)

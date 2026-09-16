@@ -1,0 +1,38 @@
+{% from "_shell.html" import shell %}
+{% call shell(title, crumb, active, active_doc, tree_docs) %}
+      <article class="kg-article">
+        <div class="kg-cover kg-cover-concept">
+          <span class="kg-concept-chip">مفهوم مشترک</span>
+        </div>
+        <header class="kg-doc-head">
+          <div class="kg-doc-icon kg-doc-icon-first">wik</div>
+          <h1 class="kg-title">{{ title }}</h1>
+          <div class="kg-props">
+            <div class="kg-prop">
+              <div class="kg-prop-k">تعداد اسناد</div>
+              <div class="kg-prop-v">{{ doc_count }} سند</div>
+            </div>
+          </div>
+          <div class="kg-hr"></div>
+        </header>
+        <div class="kg-concept-docs">
+          {% for d in docs %}
+          <a class="kg-concept-doc" href="{{ d.view_url or '#' }}">
+            <span class="kg-cd-title">{{ d.title }}</span>
+            <span class="kg-cd-meta kg-small kg-muted">{{ d.date }} · {{ d.platform or '—' }}</span>
+            {% if d.summary_fa %}<span class="kg-cd-sum kg-small kg-muted">{{ d.summary_fa[:140] }}</span>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        {% if related %}
+        <div class="kg-concept-related">
+          <div class="kg-tree-title">مفاهیم هم‌جوار</div>
+          <div class="kg-row">
+            {% for c in related %}
+            <a class="kg-rel-chip" href="/concept/{{ c.norm|urlencode }}">{{ c.display }} <span class="kg-cnt">{{ c.doc_count }}</span></a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </article>
+{% endcall %}
