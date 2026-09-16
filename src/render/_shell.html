@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=15">
+<link rel="stylesheet" href="/static/kaghaz.css?v=16">
 </head>
 <body>
 <div class="kg-shell" id="kgShell">
@@ -163,23 +163,29 @@
   };
 })();
 (function(){
-  // نوار وضعیت + نسخه‌ها (فقط صفحهٔ سند)
+  // نوار وضعیت + نسخه‌ها (فقط صفحهٔ سند) — دکمه‌های Stitch v2 (kg-st2)
   var bar = document.querySelector('.kg-statusbar');
   if (!bar) return;
   var docId = bar.dataset.doc;
   var now = bar.querySelector('.kg-st-now');
   var vbox = document.querySelector('.kg-versions');
   var FA = {Unread:'خوانده‌نشده', Read:'خوانده‌شده', Starred:'ستاره‌دار', Archived:'آرشیو'};
+  function reflect(st){
+    bar.querySelectorAll('.kg-st2').forEach(function(b){
+      b.classList.toggle('on', b.dataset.st === st);
+    });
+    if (st) now.textContent = 'وضعیت: ' + (FA[st]||st);
+  }
   fetch('/api/docs/'+docId).then(r=>r.ok?r.json():null).then(d=>{
-    if(d){ now.textContent = 'وضعیت: ' + (FA[d.status]||d.status); }
+    if(d) reflect(d.status);
   }).catch(()=>{});
-  bar.querySelectorAll('.kg-st-act[data-st]').forEach(function(b){
+  bar.querySelectorAll('.kg-st2[data-st]').forEach(function(b){
     b.addEventListener('click', function(){
       fetch('/api/docs/'+docId+'/status', {
         method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({status: b.dataset.st})
       }).then(r=>r.json()).then(d=>{
-        if(d.status){ now.textContent = 'وضعیت: ' + (FA[d.status]||d.status); }
+        if(d.status) reflect(d.status);
       }).catch(()=>{});
     });
   });

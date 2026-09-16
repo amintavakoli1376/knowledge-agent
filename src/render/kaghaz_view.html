@@ -11,11 +11,22 @@
           <h1 class="kg-title">{{ title }}</h1>
           {% if properties %}{{ properties|safe }}{% endif %}
           {% if doc_id %}
-          <!-- تغییر وضعیت + نسخه‌ها — متصل به PATCH /api/docs/{id}/status و /versions -->
+          <!-- دکمه‌های اکشن — طراحی Stitch v2: ۴۴px، SVG، فعال = تینت رنگی (ستاره طلایی/تیک سبز/آرشیو آبی) -->
           <div class="kg-statusbar" data-doc="{{ doc_id }}">
-            <button class="kg-st-act" data-st="Starred" title="ستاره‌دار">★</button>
-            <button class="kg-st-act" data-st="Read" title="خواندم">✓</button>
-            <button class="kg-st-act" data-st="Archived" title="آرشیو">▣</button>
+            <div class="kg-st-group">
+              <button class="kg-st2 kg-st2-star" data-st="Starred" title="افزودن به علاقه‌مندی‌ها" aria-label="ستاره‌دار">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+                <span class="sr-only">ستاره‌دار</span>
+              </button>
+              <button class="kg-st2 kg-st2-read" data-st="Read" title="نشان‌گذاری به عنوان خوانده‌شده" aria-label="خوانده‌ام">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span class="sr-only">خوانده‌ام</span>
+              </button>
+              <button class="kg-st2 kg-st2-arch" data-st="Archived" title="آرشیو سند" aria-label="آرشیو">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5" rx="1.5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                <span class="sr-only">آرشیو</span>
+              </button>
+            </div>
             <span class="kg-st-now kg-small kg-muted"></span>
             <button class="kg-st-act kg-versions-btn" title="نسخه‌های قبلی">نسخه‌ها</button>
           </div>

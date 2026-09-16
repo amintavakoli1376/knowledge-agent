@@ -697,11 +697,44 @@ a:hover { text-decoration: underline; }
 
 /* ---------- Status bar + versions (U-C4) ---------- */
 .kg-statusbar {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 12px;
   margin: 0 0 16px; padding: 6px 8px;
-  border: 1px solid var(--hairline); border-radius: var(--r-md);
-  background: var(--paper-card);
+  border: 1px solid var(--hairline); border-radius: 14px;
+  background: var(--paper);
 }
+/* گروه سه دکمه — قاب داخلی مثل طرح (p-1.5 bg-#fbfbfa border rounded-2xl) */
+.kg-st-group {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px; background: var(--paper);
+  border: 1px solid var(--hairline); border-radius: 16px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+}
+/* دکمه‌های ۴۴px طرح v2 — عادی: سفید/خاکستری مویی/آیکون اسلیت تیره */
+.kg-st2 {
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #ffffff; border: 1px solid rgba(228, 230, 233, 0.9);
+  border-radius: 12px; cursor: pointer;
+  color: #4c556b;
+  transition: all 0.15s ease;
+}
+.kg-st2 svg { width: 20px; height: 20px; }
+.kg-st2:active { transform: scale(0.92); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ستاره — hover کهربایی، فعال طلایی */
+.kg-st2-star:hover { background: rgba(255, 251, 235, 0.6); color: #f59e0b; border-color: #fcd34d; }
+.kg-st2-star.on { background: #fbbf24; color: #1a1c1c; border-color: #fbbf24; }
+
+/* خوانده‌ام — hover سبز، فعال زمردی */
+.kg-st2-read:hover { background: rgba(236, 253, 245, 0.4); color: #059669; border-color: #6ee7b7; }
+.kg-st2-read.on { background: #10b981; color: #ffffff; border-color: #10b981; }
+
+/* آرشیو — همیشه آبی برند، فعال آبی پر */
+.kg-st2-arch { color: var(--action); background: rgba(239, 246, 255, 0.7); border-color: rgba(191, 219, 254, 0.9); }
+.kg-st2-arch:hover { background: #dbeafe; border-color: #93c5fd; }
+.kg-st2-arch.on { background: var(--action); color: #ffffff; border-color: var(--action); }
+
 .kg-st-act {
   height: 28px; padding: 0 10px;
   background: transparent; border: 1px solid var(--hairline);
