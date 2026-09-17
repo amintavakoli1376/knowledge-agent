@@ -94,6 +94,15 @@ def _fix_persian(text: str) -> str:
 def _doc_row(r: sqlite3.Row, doc_ids: dict[tuple[str, str], str]) -> dict[str, Any]:
     url = r["url"] or ""
     doc_id = doc_ids.get(_norm_url(url), "")
+    if not doc_id:
+        # F2 (2026-09-17): fallback عنوانی مثل /index — اسناد PDF قدیمی که رجیستری
+        # جاافتاده دارند، از طریق عنوان سند Outline قابل‌کلیک می‌شوند.
+        try:
+            from src.render.views import _title_doc_ids  # noqa: PLC0415 — import داخل‌تابعی برای جلوگیری از cycle
+
+            doc_id = _title_doc_ids().get((r["title"] or "").strip(), "")
+        except Exception:  # noqa: BLE001
+            doc_id = ""
     words = len((r["full_text"] or "").split())
     return {
         "doc_id": doc_id,

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"
+
+    # Local data (SQLite stores)
+    data_dir: str = "/root/knowledge-agent-repo/data"
     
     class Config:
         env_file = ".env"

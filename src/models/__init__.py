@@ -23,6 +23,11 @@ class AIAnalysis(BaseModel):
     category: str = "General"
     tags: List[str] = Field(default_factory=list)
     priority: str = "Medium"
+    # LLM-Wiki phase 1a: تحلیل دومرحله‌ای (اختیاری — خالی = legacy single-step)
+    entities: List[str] = Field(default_factory=list)       # افراد/شرکت‌ها/محصولات
+    concepts: List[str] = Field(default_factory=list)       # مفاهیم فنی/کسب‌وکاری
+    connections: List[str] = Field(default_factory=list)    # اتصالات به موضوعات/اسناد دیگر
+    contradictions: List[str] = Field(default_factory=list)  # ادعاهای متناقض با دانش موجود
 
 
 class SaveRequest(BaseModel):

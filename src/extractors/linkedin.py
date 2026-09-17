@@ -140,13 +140,15 @@ class LinkedInExtractor(BaseExtractor):
         except Exception:
             return None
 
-        # 1) ld+json — walk every block for articleBody / headline
+        # 1) ld+json — walk every block for articleBody / headline.
+        # ⚠️ articleBody (متن کامل پست) بر headline (تیتر = برش اول متن) اولویت دارد —
+        # ترتیب keys قبلی باعث می‌شد فقط ۱۳۶ کاراکترِ headline ذخیره شود.
         for block in re.findall(r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html, re.S):
             try:
                 data = json.loads(block)
             except Exception:
                 continue
-            found = self._find_json_text(data, ('articleBody', 'headline', 'description'))
+            found = self._find_json_text(data, ('articleBody', 'headline', 'description'), prefer='articleBody')
             if found and len(found.strip()) > 30:
                 author = self._author_from_ldjson(data) or self._author_from_html(html) \
                     or self._author_from_url(url)
@@ -165,8 +167,31 @@ class LinkedInExtractor(BaseExtractor):
         return None
 
     @staticmethod
-    def _find_json_text(obj, keys: tuple) -> Optional[str]:
-        """Depth-first search of parsed JSON-LD for the first long string under a wanted key."""
+    def _find_json_text(obj, keys: tuple, prefer: Optional[str] = None) -> Optional[str]:
+        """Depth-first search of parsed JSON-LD for text under wanted keys.
+
+        prefer: اگر ست باشد، طولانی‌ترین مقدار آن کلید (مثل articleBody)
+        بر هر کلید دیگری که زودتر پیدا شود ترجیح داده می‌شود — headline
+        معمولاً فقط برشِ اولِ متن کامل است.
+        """
+        if prefer:
+            best_pref = None
+
+            def walk_pref(o):
+                nonlocal best_pref
+                if isinstance(o, dict):
+                    v = o.get(prefer)
+                    if isinstance(v, str) and len(v.strip()) > 30 and (best_pref is None or len(v) > len(best_pref)):
+                        best_pref = v.strip()
+                    for vv in o.values():
+                        walk_pref(vv)
+                elif isinstance(o, list):
+                    for it in o:
+                        walk_pref(it)
+
+            walk_pref(obj)
+            if best_pref:
+                return best_pref
         if isinstance(obj, dict):
             for k, v in obj.items():
                 if k in keys and isinstance(v, str) and len(v.strip()) > 30:

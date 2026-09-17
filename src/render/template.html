@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }} — کاغذ</title>
+<link rel="stylesheet" href="/static/kaghaz.css">
+</head>
+<body>
+<div class="kg-shell">
+
+  <!-- Sidebar (راست) -->
+  <aside class="kg-sidebar" id="sidebar">
+    <div class="kg-tree-title">کاغذ — پایگاه دانش</div>
+    <nav class="kg-tree">
+      <a href="/index" {% if active == 'index' %}class="active"{% endif %}>📊 شاخص دانش</a>
+      {% for d in tree_docs %}
+      <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <!-- Canvas -->
+  <div class="kg-canvas">
+    <header class="kg-topbar">
+      <button class="kg-menu-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+      <span class="kg-crumb">Knowledge Base <b>/ {{ crumb }}</b></span>
+    </header>
+
+    <main class="kg-page">
+      <div class="kg-doc-icon">{{ doc_emoji }}</div>
+      <h1 class="kg-title {% if is_index %}kg-index-title{% endif %}">{{ title }}</h1>
+      {{ properties|safe }}
+
+      {% if index_rows %}
+      <!-- جدول شاخص — رندر ستونی با بج‌های رنگی -->
+      <div class="kg-table-wrap">
+        <table class="kg-table">
+          <thead>
+            <tr>{% for h in index_headers %}<th>{{ h }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for r in index_rows %}
+            <tr>
+              <td class="kg-muted kg-small" style="white-space:nowrap">{{ r.date }}</td>
+              <td style="min-width:220px">
+                {% if r.view_url %}<a href="{{ r.view_url }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}
+              </td>
+              <td>{{ r.category }}</td>
+              <td class="kg-muted">{{ r.platform }}</td>
+              <td>{{ r.status }}</td>
+              <td class="kg-muted">{{ r.author }}</td>
+              <td class="kg-muted kg-small" style="max-width:180px">{{ r.tags }}</td>
+              <td class="kg-small">{% if r.source_url %}<a href="{{ r.source_url }}" target="_blank" rel="noopener">{{ r.source_host }}</a>{% else %}—{% endif %}</td>
+              <td class="kg-small kg-muted" style="max-width:260px">{{ r.summary_fa }}</td>
+              <td class="kg-small kg-muted" style="max-width:220px" dir="ltr">{{ r.summary_en }}</td>
+              <td class="kg-small">
+                {% if r.doc_url %}<a href="{{ r.doc_url }}" target="_blank" rel="noopener">📄 سند</a>{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="kg-blocks">
+        {{ body|safe }}
+      </div>
+      {% endif %}
+
+      <footer class="kg-footer">
+        <span class="kg-small kg-muted">ذخیره‌شده توسط Knowledge Agent · کاغذ</span>
+        <a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">✏️ ویرایش در Outline</a>
+      </footer>
+    </main>
+  </div>
+</div>
+{{ copy_js|safe }}
+</body>
+</html>
