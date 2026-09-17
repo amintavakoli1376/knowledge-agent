@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=17">
+<link rel="stylesheet" href="/static/kaghaz.css?v=18">
 </head>
 <body>
 <div class="kg-shell" id="kgShell">
@@ -36,10 +36,13 @@
         <a href="/index?status=Starred" {% if active == 'starred' %}class="active"{% endif %}><span class="kg-ico kg-ico-star"></span><span>علاقه‌مندی‌ها</span></a>
         <a href="/index?sort=newest" {% if active == 'recent' %}class="active"{% endif %}><span class="kg-ico kg-ico-history"></span><span>اخیر</span></a>
       </nav>
-      <!-- درخت اسناد (گروه‌بندی دسته از /api/tree) -->
+      <!-- درخت اسناد — کشویی (بسته به‌صورت پیش‌فرض) -->
       <div class="kg-sb-scroll">
-        <div class="kg-tree-title"><span>صفحات و مستندات</span></div>
-        <div id="kgTree" class="kg-tree">
+        <div class="kg-acc-head" id="kgTreeToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="kgTree">
+          <span class="kg-acc-chev"></span>
+          <span>صفحات و مستندات</span>
+        </div>
+        <div id="kgTree" class="kg-tree kg-acc-body" hidden>
           {% for d in tree_docs %}
           <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
           {% endfor %}
@@ -255,6 +258,31 @@ function kgToggleSidebar(force){
   sb.classList.toggle('open', open);
   if (veil) veil.classList.toggle('open', open);
 }
+// ===== آکاردئون «صفحات و مستندات» — بسته به‌صورت پیش‌فرض؛ state در localStorage =====
+(function(){
+  var head = document.getElementById('kgTreeToggle');
+  var body = document.getElementById('kgTree');
+  if (!head || !body) return;
+  // اگر سند فعال در درخت است، با باز بودن بیا (وگرنه بسته)
+  var hasActive = !!body.querySelector('a.active');
+  var saved = null;
+  try { saved = localStorage.getItem('kg_tree_open'); } catch(e) {}
+  var open = hasActive ? true : (saved === '1');
+  function apply(o){
+    body.hidden = !o;
+    head.setAttribute('aria-expanded', o ? 'true' : 'false');
+  }
+  apply(open);
+  function toggle(){
+    var o = body.hidden;
+    apply(o);
+    try { localStorage.setItem('kg_tree_open', o ? '1' : '0'); } catch(e) {}
+  }
+  head.addEventListener('click', toggle);
+  head.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+  });
+})();
 function kgCollapseSidebar(force){
   var shell = document.getElementById('kgShell');
   var collapsed = (force === undefined) ? !shell.classList.contains('sb-collapsed') : force;
