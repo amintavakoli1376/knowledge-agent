@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }} — کاغذ</title>
-<link rel="stylesheet" href="/static/kaghaz.css?v=18">
+<link rel="stylesheet" href="/static/kaghaz.css?v=19">
 </head>
 <body>
 <div class="kg-shell" id="kgShell">
@@ -47,9 +47,12 @@
           <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
           {% endfor %}
         </div>
-        <!-- مفاهیم مشترک — متصل به /api/concepts -->
-        <div class="kg-tree-title kg-mt">مفاهیم پرتکرار</div>
-        <nav class="kg-tree" id="kgConcepts"><span class="kg-small kg-muted" style="padding:0 8px">…</span></nav>
+        <!-- مفاهیم مشترک — کشویی مثل درخت؛ محتوای زنده از /api/concepts -->
+        <div class="kg-acc-head" id="kgConceptsToggle" role="button" tabindex="0" aria-expanded="false" aria-controls="kgConcepts">
+          <span class="kg-acc-chev"></span>
+          <span>مفاهیم پرتکرار</span>
+        </div>
+        <nav id="kgConcepts" class="kg-tree kg-acc-body" hidden><span class="kg-small kg-muted" style="padding:0 8px">…</span></nav>
       </div>
     </div>
     <!-- فوتر سایدبار -->
@@ -258,30 +261,36 @@ function kgToggleSidebar(force){
   sb.classList.toggle('open', open);
   if (veil) veil.classList.toggle('open', open);
 }
-// ===== آکاردئون «صفحات و مستندات» — بسته به‌صورت پیش‌فرض؛ state در localStorage =====
+// ===== آکاردئون‌های سایدبار (درخت + مفاهیم) — بسته به‌صورت پیش‌فرض؛ state در localStorage =====
 (function(){
-  var head = document.getElementById('kgTreeToggle');
-  var body = document.getElementById('kgTree');
-  if (!head || !body) return;
-  // اگر سند فعال در درخت است، با باز بودن بیا (وگرنه بسته)
-  var hasActive = !!body.querySelector('a.active');
-  var saved = null;
-  try { saved = localStorage.getItem('kg_tree_open'); } catch(e) {}
-  var open = hasActive ? true : (saved === '1');
-  function apply(o){
-    body.hidden = !o;
-    head.setAttribute('aria-expanded', o ? 'true' : 'false');
+  function wireAcc(headId, bodyId, storageKey, openIf){
+    var head = document.getElementById(headId);
+    var body = document.getElementById(bodyId);
+    if (!head || !body) return;
+    var saved = null;
+    try { saved = localStorage.getItem(storageKey); } catch(e) {}
+    var open = openIf ? true : (saved === '1');
+    function apply(o){
+      body.hidden = !o;
+      head.setAttribute('aria-expanded', o ? 'true' : 'false');
+    }
+    apply(open);
+    function toggle(){
+      var o = body.hidden;
+      apply(o);
+      try { localStorage.setItem(storageKey, o ? '1' : '0'); } catch(e) {}
+    }
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', function(e){
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+    });
   }
-  apply(open);
-  function toggle(){
-    var o = body.hidden;
-    apply(o);
-    try { localStorage.setItem('kg_tree_open', o ? '1' : '0'); } catch(e) {}
-  }
-  head.addEventListener('click', toggle);
-  head.addEventListener('keydown', function(e){
-    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+  wireAcc('kgTreeToggle', 'kgTree', 'kg_tree_open', function(){
+    // اگر سند فعال در درخت است، باز بیا
+    var b = document.getElementById('kgTree');
+    return !!(b && b.querySelector('a.active'));
   });
+  wireAcc('kgConceptsToggle', 'kgConcepts', 'kg_concepts_open', null);
 })();
 function kgCollapseSidebar(force){
   var shell = document.getElementById('kgShell');

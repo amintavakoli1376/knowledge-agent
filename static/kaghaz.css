@@ -210,6 +210,11 @@ a:hover { text-decoration: underline; }
 .kg-sb-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 4px; }
 .kg-mt { margin-top: 14px; }
 
+/* --- آکاردئون‌های سایدبار — فاصلهٔ استاندارد بین بخش‌ها --- */
+.kg-acc-head { margin-top: 6px; }
+.kg-acc-head + .kg-acc-head, .kg-acc-body + .kg-acc-head { margin-top: 10px; }
+.kg-acc-body:not([hidden]) { padding-bottom: 6px; }
+
 /* --- آکاردئون «صفحات و مستندات» (کشویی) --- */
 .kg-acc-head {
   display: flex; align-items: center; gap: 6px;
