@@ -211,9 +211,10 @@ a:hover { text-decoration: underline; }
 .kg-mt { margin-top: 14px; }
 
 /* --- آکاردئون‌های سایدبار — فاصلهٔ استاندارد بین بخش‌ها --- */
-.kg-acc-head { margin-top: 6px; }
-.kg-acc-head + .kg-acc-head, .kg-acc-body + .kg-acc-head { margin-top: 10px; }
-.kg-acc-body:not([hidden]) { padding-bottom: 6px; }
+.kg-acc-head { margin-top: 2px; }
+/* فاصلهٔ بین دو بخش: فقط ۲px (چون padding داخلی head خودش ۱۴px فاصلهٔ بصری می‌سازد) */
+.kg-acc-head + .kg-acc-head, .kg-acc-body + .kg-acc-head { margin-top: 2px; }
+.kg-acc-body:not([hidden]) { padding-bottom: 2px; }
 
 /* --- آکاردئون «صفحات و مستندات» (کشویی) --- */
 .kg-acc-head {
