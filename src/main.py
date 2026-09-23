@@ -24,7 +24,7 @@ from .extractors.twitter import TwitterExtractor
 from .extractors.instagram import InstagramExtractor
 from .extractors.pdf import PDFExtractor
 from .extractors.telegram_channel import TelegramChannelExtractor
-from .processors.summarizer import ContentSummarizer
+from .processors.summarizer import ContentSummarizer, QuotaExceededError
 from .storage.notion import NotionStorage
 from .storage import sqlite_store
 from .models import SaveRequest, SaveResponse, SetupRequest, SetupResponse
@@ -75,7 +75,13 @@ async def lifespan(app: FastAPI):
             logger.warning("To use Telegram bot, ensure network access to api.telegram.org")
     else:
         logger.warning("TELEGRAM_BOT_TOKEN not set. Telegram bot disabled.")
-    
+
+    # ریکاوری خودکار خلاصه‌های ناقص (سهمیهٔ AI 429) — پس از setup بات،
+    # به‌صورت پس‌زمینه‌ای؛ هرگز startup را نمی‌بندد.
+    from .processors.recovery import recover_pending_safe
+
+    asyncio.create_task(recover_pending_safe(storage=storage))
+
     yield
     
     # Shutdown
@@ -190,7 +196,14 @@ async def api_save(request: SaveRequest):
         
         # Step 2: Summarize
         logger.info("Analyzing content with AI...")
-        analysis = await summarizer.analyze(content)
+        try:
+            analysis = await summarizer.analyze(content)
+        except QuotaExceededError as e:
+            # سهمیهٔ AI تمام شده — رکورد با flag ذخیره می‌شود؛ بعداً خودکار خلاصه می‌شود
+            from .processors.summarizer import _quota_pending_analysis
+
+            analysis = _quota_pending_analysis(e)
+            logger.warning(f"AI quota exhausted for {url} — saved as pending_resummarize")
 
         # Step 2.5: Update SQLite row with AI analysis fields
         sqlite_store.save_analysis(url, analysis)

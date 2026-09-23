@@ -28,6 +28,15 @@ class AIAnalysis(BaseModel):
     concepts: List[str] = Field(default_factory=list)       # مفاهیم فنی/کسب‌وکاری
     connections: List[str] = Field(default_factory=list)    # اتصالات به موضوعات/اسناد دیگر
     contradictions: List[str] = Field(default_factory=list)  # ادعاهای متناقض با دانش موجود
+    # مقاوم‌سازی 429-quota: وضعیت تحلیل — خالی = موفق (legacy)؛
+    # "pending_resummarize" = سهمیه AI تمام بوده و بعداً خودکار خلاصه می‌شود
+    analysis_status: str = ""
+    analysis_error: str = ""
+    analysis_attempts: int = 0
+
+    @property
+    def is_pending_resummarize(self) -> bool:
+        return self.analysis_status == "pending_resummarize"
 
 
 class SaveRequest(BaseModel):

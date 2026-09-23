@@ -60,6 +60,10 @@ def init_db() -> None:
             ("status", "TEXT DEFAULT 'Unread'"),
             ("starred_at", "TEXT"),  # U2b: زمان ستاره‌دار کردن (حذف نرم = Archived)
             ("analysis_meta", "TEXT"),  # LLM-Wiki 1a: JSON تحلیل دومرحله‌ای
+            # مقاوم‌سازی 429-quota (t_c270e218): وضعیت تحلیل + خطا + شمارنده تلاش
+            ("analysis_status", "TEXT DEFAULT ''"),
+            ("analysis_error", "TEXT"),
+            ("analysis_attempts", "INTEGER DEFAULT 0"),
         ]:
             try:
                 conn.execute(f"ALTER TABLE content ADD COLUMN {col} {ddl}")
@@ -165,6 +169,15 @@ def _snapshot_if_exists(conn: sqlite3.Connection, url: str) -> None:
         logging.getLogger(__name__).warning(f"doc snapshot skipped: {e}")
 
 
+def _analysis_flag_values(analysis) -> tuple:
+    """(status, error, attempts) از analysis — سازگار با آبجکت‌های قدیمی بدون flag."""
+    return (
+        getattr(analysis, "analysis_status", "") or "",
+        getattr(analysis, "analysis_error", "") or "",
+        int(getattr(analysis, "analysis_attempts", 0) or 0),
+    )
+
+
 def save_content(content: ExtractedContent, analysis=None) -> None:
     """Save full extracted content to SQLite. Never raises (best-effort).
 
@@ -177,13 +190,15 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
         try:
             # U4-min: اگر ردیف موجود است، قبل از رونویسی snapshot بگیر
             _snapshot_if_exists(conn, content.url)
+            a_status, a_error, a_attempts = _analysis_flag_values(analysis) if analysis else ("", "", 0)
             conn.execute(
                 """
                 INSERT INTO content
                     (url, title, platform, full_text, author,
                      category, priority, tags, summary_fa, summary_en,
-                     key_points, status, metadata, saved_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     key_points, status, metadata, saved_at,
+                     analysis_status, analysis_error, analysis_attempts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     title=excluded.title, platform=excluded.platform,
                     full_text=excluded.full_text, author=excluded.author,
@@ -192,7 +207,10 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
                     summary_en=excluded.summary_en, key_points=excluded.key_points,
                     -- status کاربر (U2b) با re-save ذخیرهٔ جدید نمی‌پرد
                     status=content.status, metadata=excluded.metadata,
-                    saved_at=excluded.saved_at
+                    saved_at=excluded.saved_at,
+                    analysis_status=excluded.analysis_status,
+                    analysis_error=excluded.analysis_error,
+                    analysis_attempts=excluded.analysis_attempts
                 """,
                 (
                     content.url,
@@ -209,6 +227,9 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
                     "Unread",
                     json.dumps(content.metadata or {}, ensure_ascii=False),
                     datetime.now(timezone.utc).isoformat(),
+                    a_status,
+                    a_error,
+                    a_attempts,
                 ),
             )
             conn.commit()
@@ -233,11 +254,13 @@ def save_analysis(url: str, analysis) -> None:
                 "connections": list(getattr(analysis, "connections", []) or []),
                 "contradictions": list(getattr(analysis, "contradictions", []) or []),
             }
+            a_status, a_error, a_attempts = _analysis_flag_values(analysis)
             conn.execute(
                 """
                 UPDATE content SET
                     category=?, priority=?, tags=?, summary_fa=?,
-                    summary_en=?, key_points=?, analysis_meta=?
+                    summary_en=?, key_points=?, analysis_meta=?,
+                    analysis_status=?, analysis_error=?, analysis_attempts=?
                 WHERE url=?
                 """,
                 (
@@ -248,6 +271,9 @@ def save_analysis(url: str, analysis) -> None:
                     analysis.summary_en or "",
                     json.dumps(analysis.key_points or [], ensure_ascii=False),
                     json.dumps(meta, ensure_ascii=False) if any(meta.values()) else "",
+                    a_status,
+                    a_error,
+                    a_attempts,
                     url,
                 ),
             )
@@ -311,3 +337,81 @@ def search_text(query: str, limit: int = 10) -> list:
             conn.close()
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# مقاوم‌سازی 429-quota (t_c270e218) — pending_resummarize
+# ---------------------------------------------------------------------------
+
+def get_pending_resummarize(max_attempts: int = 5, limit: int = 10) -> list:
+    """رکوردهایی که خلاصهٔ آن‌ها به‌خاطر سهمیهٔ AI ناقص ماند و هنوز قابل تلاش‌اند.
+
+    خروجی: لیست dict مرتب‌شده بر اساس قدیمی‌ترین تلاش ناموفق (FIFO).
+    """
+    try:
+        init_db()
+        conn = _get_connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, url, title, platform, full_text, author,
+                       analysis_attempts
+                FROM content
+                WHERE analysis_status = 'pending_resummarize'
+                  AND COALESCE(analysis_attempts, 0) < ?
+                ORDER BY saved_at ASC
+                LIMIT ?
+                """,
+                (max_attempts, limit),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"get_pending_resummarize failed: {e}")
+        return []
+
+
+def mark_analysis_complete(url: str, analysis) -> None:
+    """موفقیت ریکاوری: خلاصه‌های نهایی + پاک‌کردن flag pending."""
+    save_analysis(url, analysis)
+
+
+def mark_analysis_failed(url: str, error: str, attempts: int) -> None:
+    """شکست ریکاوری: شمارنده تلاش + پیام خطا ثبت می‌شود، status pending می‌ماند."""
+    try:
+        init_db()
+        conn = _get_connection()
+        try:
+            conn.execute(
+                """
+                UPDATE content SET
+                    analysis_status='pending_resummarize',
+                    analysis_error=?,
+                    analysis_attempts=?
+                WHERE url=?
+                """,
+                ((error or "")[:200], int(attempts), url),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"mark_analysis_failed skipped: {e}")
+
+
+def clear_analysis_status(url: str) -> None:
+    """پاک‌کردن کامل flag (وقتی سند Notion پیدا نشد و رها می‌شود)."""
+    try:
+        init_db()
+        conn = _get_connection()
+        try:
+            conn.execute(
+                "UPDATE content SET analysis_status='', analysis_error='' WHERE url=?",
+                (url,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"clear_analysis_status skipped: {e}")

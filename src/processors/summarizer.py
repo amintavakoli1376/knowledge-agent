@@ -1,4 +1,5 @@
 """AI summarization processor — OpenAI-compatible (any base_url/model)."""
+import asyncio
 import json
 import logging
 from openai import OpenAI, AsyncOpenAI
@@ -6,6 +7,69 @@ from ..config import settings
 from ..models import ExtractedContent, AIAnalysis
 
 logger = logging.getLogger(__name__)
+
+# نشانگرهای خطای سهمیه (429) — کوچک/بزرگ حروف مهم نیست
+_QUOTA_MARKERS = (
+    "monthly spending limit",
+    "insufficient_quota",
+    "freeusagelimit",  # FreeUsageLimit
+    "free usage limit",
+)
+
+# حداکثر تلاش برای ریکاوری یک رکورد pending_resummarize
+MAX_RESUMMARIZE_ATTEMPTS = 5
+
+# فاصله بین رکوردها در ریکاوری (backoff سبک بین درخواست‌ها)
+RECOVERY_SLEEP_SECONDS = 3.0
+
+
+class QuotaExceededError(RuntimeError):
+    """خطای سهمیه‌ی سرویس AI (429) — قابل ریکاوی بعداً (مثلاً پس از شارژ سهمیه)."""
+
+
+def is_quota_error(exc: BaseException) -> bool:
+    """تشخیص خطای سهمیه (429 / monthly spending limit / insufficient_quota).
+
+    کل زنجیرهٔ استثناها (cause ها) بررسی می‌شود چون SDK معمولاً خطای HTTP را
+    داخل استثنای خودش می‌پیچد.
+    """
+    seen = set()
+    cur = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        # 1) status_code == 429 به‌همراه نشانگر سهمیه در پیام/بدنه
+        status = getattr(cur, "status_code", None)
+        if status == 429:
+            text = " ".join(
+                str(part) for part in (cur.args + (str(cur),)) if part
+            )
+            body = getattr(cur, "body", None)
+            if body is not None:
+                text += " " + json.dumps(body, default=str)
+            low = text.lower()
+            if any(m in low for m in _QUOTA_MARKERS):
+                return True
+        # 2) نشانگر صریح سهمیه در خود پیام (بدون نیاز به status)
+        msg = str(cur).lower()
+        if any(m in msg for m in _QUOTA_MARKERS):
+            return True
+        cur = getattr(cur, "__cause__", None) or getattr(cur, "__context__", None)
+    return False
+
+
+def _quota_pending_analysis(err: BaseException) -> AIAnalysis:
+    """خروجی analyze هنگام سقف سهمیه: رکورد ذخیره می‌شود ولی خلاصهٔ خالی + flag."""
+    return AIAnalysis(
+        summary_fa="",
+        summary_en="",
+        key_points=[],
+        category="",
+        tags=["pending"],
+        priority="Medium",
+        analysis_status="pending_resummarize",
+        analysis_error=str(err)[:200],
+        analysis_attempts=1,
+    )
 
 
 class ContentSummarizer:
@@ -109,7 +173,22 @@ Respond with ONLY the JSON object, no other text."""
                 ],
                 # gpt-5.x فقط temperature پیش‌فرض را قبول می‌کند — پارامتر نفرستاده می‌شود
             )
+        except Exception as e:
+            if is_quota_error(e):
+                # سهمیهٔ AI تمام شده — خطا را بالا بفرست تا caller رکورد را
+                # با flag ذخیره کند (نه با متن خطا در summary)
+                logger.error(f"Summarization blocked by AI quota (429): {e}")
+                raise QuotaExceededError(str(e)[:200]) from e
+            logger.error(f"Summarization error: {e}")
+            return AIAnalysis(
+                summary_fa=f"خطا در خلاصه‌سازی: {str(e)}",
+                summary_en=f"Summarization error: {str(e)}",
+                category="General",
+                tags=["error"],
+                priority="Low"
+            )
 
+        try:
             raw = resp.choices[0].message.content or ""
             # استخراج JSON خالص از پاسخ (ممکنه مدل متن اضافی بذاره)
             raw = raw.strip()
@@ -122,21 +201,6 @@ Respond with ONLY the JSON object, no other text."""
                 raw = raw[start:end + 1]
 
             result = json.loads(raw)
-            # LLM-Wiki 1a: پاس ۱ (تحلیل ساختارمند) — خطا/خالی → فیلدهای خالی (legacy سازگار)
-            step1 = await self._analyze_step1(content)
-            return AIAnalysis(
-                summary_fa=result.get("summary_fa", "خلاصه در دسترس نیست."),
-                summary_en=result.get("summary_en", "Summary not available."),
-                key_points=result.get("key_points", []),
-                category=result.get("category", "General"),
-                tags=result.get("tags", []),
-                priority=result.get("priority", "Medium"),
-                entities=step1.get("entities", []),
-                concepts=step1.get("concepts", []),
-                connections=step1.get("connections", []),
-                contradictions=step1.get("contradictions", []),
-            )
-
         except Exception as e:
             logger.error(f"Summarization error: {e}")
             return AIAnalysis(
@@ -146,3 +210,68 @@ Respond with ONLY the JSON object, no other text."""
                 tags=["error"],
                 priority="Low"
             )
+
+        # LLM-Wiki 1a: پاس ۱ (تحلیل ساختارمند) — خطا/خالی → فیلدهای خالی (legacy سازگار)
+        step1 = await self._analyze_step1(content)
+        return AIAnalysis(
+            summary_fa=result.get("summary_fa", "خلاصه در دسترس نیست."),
+            summary_en=result.get("summary_en", "Summary not available."),
+            key_points=result.get("key_points", []),
+            category=result.get("category", "General"),
+            tags=result.get("tags", []),
+            priority=result.get("priority", "Medium"),
+            entities=step1.get("entities", []),
+            concepts=step1.get("concepts", []),
+            connections=step1.get("connections", []),
+            contradictions=step1.get("contradictions", []),
+        )
+
+    async def summarize_ai(self, content: ExtractedContent) -> AIAnalysis:
+        """فقط فراخوانی AI خلاصه‌سازی (بدون پاس ۱ و بدون فالبک خطا).
+
+        کاربرد در ریکاوری: خطای سهمیه مستقیم به بالا می‌رسد؛ خروجی موفق
+        خلاصه‌های خام است (بدون mutate کردن متن خطا در summary).
+        """
+        prompt = f"""You are a knowledge management assistant. Analyze the following content and return a JSON object.
+
+Content Title: {content.title[:200]}
+Content URL: {content.url}
+Platform: {content.platform}
+
+Content:
+{content.full_text[:5000]}
+
+Return a JSON object with these fields:
+- summary_fa: خلاصه ۳-۴ خطی به فارسی روان
+- summary_en: 3-4 line summary in English
+- key_points: array of 3-5 key points، هر نکته یک جمله کوتاه فارسی روان (فارسی بنویس، انگلیسی نه)
+- category: one of ["AI/ML", "Technology", "Business", "Science", "Design", "Programming", "Social", "News", "Tutorial", "Opinion", "General"]
+- tags: array of 3-5 relevant tags (lowercase, in English)
+- priority: one of ["High", "Medium", "Low"] based on content importance
+
+Respond with ONLY the JSON object, no other text."""
+
+        resp = await self.client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[
+                {"role": "system", "content": "You are a precise JSON-returning assistant."},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            if raw.startswith("json"):
+                raw = raw[4:]
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end != -1:
+            raw = raw[start:end + 1]
+        result = json.loads(raw)
+        return AIAnalysis(
+            summary_fa=result.get("summary_fa", ""),
+            summary_en=result.get("summary_en", ""),
+            key_points=result.get("key_points", []),
+            category=result.get("category", "General"),
+            tags=result.get("tags", []),
+            priority=result.get("priority", "Medium"),
+        )

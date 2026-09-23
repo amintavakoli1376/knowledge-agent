@@ -11,7 +11,11 @@ from ..utils.url_parser import detect_platform, is_valid_url
 from ..extractors.base import ExtractionError
 from ..extractors.website import WebsiteExtractor
 from ..extractors.arxiv import ArxivExtractor
-from ..processors.summarizer import ContentSummarizer
+from ..processors.summarizer import (
+    ContentSummarizer,
+    QuotaExceededError,
+    _quota_pending_analysis,
+)
 from ..storage.notion import NotionStorage
 from ..storage import sqlite_store
 from ..models import ExtractedContent, AIAnalysis
@@ -266,11 +270,22 @@ class TelegramBot:
             sqlite_store.save_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            analysis = await self.summarizer.analyze(content)
+            try:
+                analysis = await self.summarizer.analyze(content)
+            except QuotaExceededError as e:
+                # سهمیهٔ AI تمام شده — رکورد با flag ذخیره می‌شود، بعداً خودکار خلاصه می‌شود
+                analysis = _quota_pending_analysis(e)
+                logger.warning(f"AI quota exhausted for {url} — saved as pending_resummarize")
             sqlite_store.save_analysis(url, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
+            
+            if getattr(analysis, "is_pending_resummarize", False):
+                await self._send_pending_notice(update, content, notion_url)
+                # embedding بعد از جواب (بدون معطلی کاربر) — متن خام برای RAG مفید است
+                asyncio.create_task(self._embed_content(content))
+                return
             
             outline_url = await self._save_outline(content, analysis)
             await self._send_result(update, content, analysis, notion_url, outline_url)
@@ -297,6 +312,9 @@ class TelegramBot:
         """Chunk + embed content into vector store (best-effort, non-blocking)."""
         try:
             text = content.full_text or content.title or ""
+            # متن ارسالی خودِ ربات (نشانگر raw-post) embed نشود
+            if text.startswith("📌 ذخیره شد —"):
+                return
             chunks = chunk_text(text)
             if not chunks:
                 return
@@ -388,11 +406,20 @@ class TelegramBot:
             sqlite_store.save_content(content)
 
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            analysis = await self.summarizer.analyze(content)
+            try:
+                analysis = await self.summarizer.analyze(content)
+            except QuotaExceededError as e:
+                analysis = _quota_pending_analysis(e)
+                logger.warning(f"AI quota exhausted for {content.url} — saved as pending_resummarize")
             sqlite_store.save_analysis(content.url, analysis)
 
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
+
+            if getattr(analysis, "is_pending_resummarize", False):
+                await self._send_pending_notice(update, content, notion_url)
+                asyncio.create_task(self._embed_content(content))
+                return
 
             outline_url = await self._save_outline(content, analysis)
             await self._send_result(update, content, analysis, notion_url, outline_url)
@@ -423,11 +450,20 @@ class TelegramBot:
             sqlite_store.save_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            analysis = await self.summarizer.analyze(content)
+            try:
+                analysis = await self.summarizer.analyze(content)
+            except QuotaExceededError as e:
+                analysis = _quota_pending_analysis(e)
+                logger.warning(f"AI quota exhausted for {post_url or 'raw post'} — saved as pending_resummarize")
             sqlite_store.save_analysis(post_url or text, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
+            
+            if getattr(analysis, "is_pending_resummarize", False):
+                await self._send_pending_notice(update, content, notion_url)
+                asyncio.create_task(self._embed_content(content))
+                return
             
             outline_url = await self._save_outline(content, analysis)
             await self._send_result(update, content, analysis, notion_url, outline_url)
@@ -463,6 +499,24 @@ class TelegramBot:
         except Exception as e:  # noqa: BLE001
             logger.warning(f"Outline save failed (non-fatal): {e}")
             return None
+
+    @staticmethod
+    def _pending_message(content: ExtractedContent, notion_url: str | None) -> str:
+        """پیام صادقانه برای رکورد ذخیره‌شده بدون خلاصه (سهمیهٔ AI تمام شده)."""
+        msg = (
+            "💾 **ذخیره شد — خلاصه موقتاً در دسترس نیست (سهمیهٔ AI).**\n\n"
+            f"📄 {content.title[:80]}\n\n"
+            "متن کامل ذخیره شد و بعداً خلاصه‌سازی **خودکار** انجام می‌شود؛ "
+            "همین که سهمیه شارژ شد، خلاصه در پایگاه دانش و Notion تکمیل می‌شود."
+        )
+        if notion_url and TelegramBot._is_valid_url(notion_url):
+            msg += f"\n\n🌐 صفحه Notion (بدون خلاصه، موقتاً):\n{notion_url}"
+        return msg
+
+    async def _send_pending_notice(self, update: Update, content: ExtractedContent,
+                                   notion_url: str | None = None) -> None:
+        """ارسال اعلان pending_resummarize — بدون نمایش متن خطا به کاربر."""
+        await update.message.reply_text(self._pending_message(content, notion_url))
 
     async def _send_result(self, update: Update, content: ExtractedContent, 
                           analysis, notion_url: str, outline_url: str | None = None):
