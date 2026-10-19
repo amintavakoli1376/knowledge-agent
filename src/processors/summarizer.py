@@ -8,6 +8,22 @@ from ..models import ExtractedContent, AIAnalysis
 
 logger = logging.getLogger(__name__)
 
+def _max_tokens_kwargs() -> dict:
+    """سقف توکن خروجی برای همهٔ فراخوانی‌های LLM.
+
+    چرا لازم است: مدل‌های reasoning ممکن است کل بودجهٔ پیش‌فرض را صرف
+    ``reasoning_tokens`` کنند و خروجی ``content`` خالی برگردد
+    (``finish_reason=length``) — همان چیزی که در کالیبره‌سازی مفاهیم دیدیم.
+    ``openai_max_tokens=0`` یعنی پارامتر فرستاده نشود.
+    """
+    try:
+        limit = int(settings.openai_max_tokens)
+    except Exception:  # noqa: BLE001
+        limit = 0
+    return {"max_tokens": limit} if limit > 0 else {}
+
+
+
 # نشانگرهای خطای سهمیه (429) — کوچک/بزرگ حروف مهم نیست
 _QUOTA_MARKERS = (
     "monthly spending limit",
@@ -81,6 +97,26 @@ class ContentSummarizer:
             base_url=settings.openai_base_url,
         )
 
+    async def _chat(self, **kwargs) -> str:
+        """فراخوانی LLM با یک تلاش دوباره روی پاسخ خالی.
+
+        روترها گاهی 200 با ``content`` خالی برمی‌گردانند (مدل بودجه را صرف
+        ``reasoning`` می‌کند یا گلیچ گذرا). قبلاً همین باعث می‌شد خلاصه با متن
+        «خطا در خلاصه‌سازی: Expecting value…» ذخیره شود.
+        """
+        meta = ""
+        for attempt in (1, 2):
+            resp = await self.client.chat.completions.create(**kwargs)
+            ch = resp.choices[0]
+            content = (ch.message.content or "").strip()
+            if content:
+                return content
+            meta = f"finish={ch.finish_reason}"
+            logger.warning(
+                "LLM returned empty content (attempt %s, %s) — retrying", attempt, meta
+            )
+        raise RuntimeError(f"LLM returned empty content twice ({meta})")
+
     async def _analyze_step1(self, content: ExtractedContent) -> dict:
         """پاس ۱ — تحلیل ساختارمند (LLM-Wiki two-step ingest).
 
@@ -105,14 +141,14 @@ Return ONLY a JSON object with these fields:
 
 Respond with ONLY the JSON object."""
         try:
-            resp = await self.client.chat.completions.create(
+            raw = await self._chat(
                 model=settings.openai_model,
                 messages=[
                     {"role": "system", "content": "You are a precise JSON-returning analyst."},
                     {"role": "user", "content": prompt},
                 ],
+                **_max_tokens_kwargs(),
             )
-            raw = (resp.choices[0].message.content or "").strip()
             if raw.startswith("```"):
                 raw = raw.strip("`")
                 if raw.startswith("json"):
@@ -165,13 +201,14 @@ Return a JSON object with these fields:
 Respond with ONLY the JSON object, no other text."""
 
         try:
-            resp = await self.client.chat.completions.create(
+            raw = await self._chat(
                 model=settings.openai_model,
                 messages=[
                     {"role": "system", "content": "You are a precise JSON-returning assistant."},
                     {"role": "user", "content": prompt},
                 ],
                 # gpt-5.x فقط temperature پیش‌فرض را قبول می‌کند — پارامتر نفرستاده می‌شود
+                **_max_tokens_kwargs(),
             )
         except Exception as e:
             if is_quota_error(e):
@@ -189,7 +226,6 @@ Respond with ONLY the JSON object, no other text."""
             )
 
         try:
-            raw = resp.choices[0].message.content or ""
             # استخراج JSON خالص از پاسخ (ممکنه مدل متن اضافی بذاره)
             raw = raw.strip()
             if raw.startswith("```"):
@@ -251,14 +287,14 @@ Return a JSON object with these fields:
 
 Respond with ONLY the JSON object, no other text."""
 
-        resp = await self.client.chat.completions.create(
+        raw = await self._chat(
             model=settings.openai_model,
             messages=[
                 {"role": "system", "content": "You are a precise JSON-returning assistant."},
                 {"role": "user", "content": prompt},
             ],
+            **_max_tokens_kwargs(),
         )
-        raw = (resp.choices[0].message.content or "").strip()
         if raw.startswith("```"):
             raw = raw.strip("`")
             if raw.startswith("json"):

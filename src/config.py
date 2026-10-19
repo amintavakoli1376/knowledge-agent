@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+    # سقف توکن خروجی. مدل‌های reasoning اول توکن‌ها را صرف «فکر کردن» می‌کنند؛
+    # اگر سقف کم باشد content خالی برمی‌گردد (finish_reason=length).
+    # 0 = پارامتر فرستاده نشود (پیش‌فرض روتر).
+    openai_max_tokens: int = 16000
     
     # Server
     host: str = "0.0.0.0"
