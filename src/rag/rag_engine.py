@@ -115,7 +115,7 @@ class RagEngine:
     async def ask(self, question: str) -> str:
         """Retrieve + answer. Returns markdown text for Telegram."""
         emb = get_embedder()
-        qv = emb.embed_one(question)
+        qv = emb.embed_query(question)  # prefix «query: » — الزام e5
 
         vector_hits = []
         if qv:

@@ -70,7 +70,7 @@ def _slug_doc_ids() -> dict[str, str]:
     """
     import time as _t
 
-    if _t.time() - _slug_cache["at"] > 300:
+    if settings.outline_enabled and _t.time() - _slug_cache["at"] > 300:
         try:
             res = registry._api("documents.list", {"limit": 100, "sort": "updatedAt"})
             docs = res.get("data") if isinstance(res.get("data"), list) else (res.get("data") or {}).get("documents") or []
@@ -167,10 +167,10 @@ def _sparkline_data() -> list[int]:
 
 @router.get("/index", response_class=HTMLResponse)
 async def kaghaz_index(request: Request, q: str = "", status: str = "", category: str = "", platform: str = "", sort: str = "newest"):
-    docs = registry.list_collection_docs(limit=200)
+    docs = registry.list_collection_docs(limit=200) if settings.outline_enabled else []
     index_doc = next((d for d in docs if "شاخص" in d.get("title", "")), None)
-    if not index_doc:
-        raise HTTPException(503, "Index document unavailable")
+    # بدون Outline (نصب تازه/آفلاین) صفحهٔ شاخص باید از خودِ knowledge.db رندر شود،
+    # نه ۵۰۳ بعد از ۳۰ ثانیه تایم‌اوت.
 
     # U-C1/C2: جدول شاخص از content (همان منبع /api/docs) + فیلترهای سرور-رندر
     reg = {u.rstrip("/"): did for u, did, _t in registry.all_docs()}
@@ -264,7 +264,7 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
             "properties": "",
             "kpis": kpis,
             "spark_pts": pts,
-            "outline_edit_url": settings.outline_url.rstrip("/") + index_doc.get("url", ""),
+            "outline_edit_url": (settings.outline_url.rstrip("/") + (index_doc or {}).get("url", "")) if index_doc else "",
             "copy_js": COPY_JS,
         },
     )

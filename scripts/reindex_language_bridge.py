@@ -24,7 +24,7 @@ for cid, full, sfa in rows:
     if not chunks:
         continue
     bridge = ((sfa or "").strip() + "\n" + chunks[0]).strip()
-    vectors = emb.embed([bridge] + chunks[1:])
+    vectors = emb.embed_passages([bridge] + chunks[1:])  # prefix «passage: » — الزام e5
     vector_store.store_chunks(cid, [bridge] + chunks[1:], vectors)
     total += len(chunks)
     print(f"cid {cid}: {len(chunks)} chunks (skipped {skipped} so far)", flush=True)

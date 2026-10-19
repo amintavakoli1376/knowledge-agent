@@ -10,4 +10,16 @@ arxiv>=4.0.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 python-multipart>=0.0.6
-pymupdf>=24.0
+jinja2>=3.1
+markdown-it-py>=3.0
+mdit-py-plugins>=0.4
+
+# PDF extraction — pin fixed: PyPI serves pymupdf 1.26+/2.0 now, so ">=24.0" is unsatisfiable
+pymupdf>=1.26
+
+# Embeddings — ONNX int8 runtime, deliberately WITHOUT torch/sentence-transformers
+# (measured: torch+ST imports cost 429MB RAM; this path peaks ~460MB total)
+onnxruntime>=1.17
+tokenizers>=0.15
+numpy>=1.24
+huggingface_hub>=0.23

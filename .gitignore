@@ -26,3 +26,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# مدل embedding (۱۱۸MB) — با scripts/download_embedding_model.py گرفته می‌شود
+models/
