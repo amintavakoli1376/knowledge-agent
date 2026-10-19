@@ -606,6 +606,12 @@ a:hover { text-decoration: underline; }
   /* صفحهٔ شاخص: پدینگ حذف‌شدهٔ .kg-page را برنمی‌گردانیم — قاب جدول تا
      پایینِ viewport می‌آید (جای اسکرول افقی دیده می‌شود) و صفحه اصلی اسکرول ندارد. */
   .kg-page-wide { padding: 0; }
+  /* موبایل: سه کارت KPI روی هم می‌آیند و ارتفاع viewport را می‌بلعند؛ اگر صفحه
+     overflow:hidden بماند، جدول سندها بیرون از کادر می‌افتد و کاربر هیچ سندی
+     نمی‌بیند. راه‌حل: خود صفحه اسکرول می‌کند و قاب جدول ارتفاع مشخص دارد. */
+  .kg-canvas:has(> .kg-page-wide) { height: auto; overflow: visible; }
+  .kg-page-wide { height: auto; min-height: calc(100svh - 48px); overflow: visible; }
+  .kg-page-wide > .kg-table-wrap { flex: 0 1 auto; max-height: 62svh; }
 }
 
 /* ---------- KPI cards با sparkline (R2) ---------- */
@@ -628,9 +634,23 @@ a:hover { text-decoration: underline; }
 .kg-kpi-spark { height: 28px; margin-top: 10px; color: var(--action); }
 .kg-kpi-spark svg { width: 100%; height: 100%; display: block; }
 @media (max-width: 768px) {
-  .kg-kpis { grid-template-columns: 1fr; gap: 10px; }
-  .kg-kpi { min-height: 0; }
-  .kg-kpi-spark { height: 22px; }
+  /* موبایل: کارت‌ها به‌جای چیدمان عمودی (که ارتفاع صفحه را می‌بلعید و جدول را
+     بیرون از کادر می‌انداخت) یک نوار افقی اسکرول‌شو می‌شوند. */
+  /* سه کارت در یک ردیفِ کامل (بدون اسکرول افقی): هر کارت یک‌سوم عرض،
+     عدد و برچسب کوچک‌تر تا در ۳۹۰px جا شود. */
+  .kg-kpis {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 8px;
+    margin: 12px 0 6px;
+    overflow: visible;
+  }
+  .kg-kpi { min-height: 0; padding: 9px 10px; }
+  .kg-kpi-val { font-size: 1.3rem; }
+  .kg-kpi-top { font-size: 0.7rem; }
+  .kg-kpi-sub { font-size: 0.62rem; }
+  .kg-kpi-spark { height: 16px; margin-top: 6px; }
 }
 
 /* ---------- بلوک گاتر (R4) — drag/add در حاشیهٔ راست، مثل طرح ---------- */
@@ -817,3 +837,23 @@ a:hover { text-decoration: underline; }
 }
 .kg-concept-modal h3 { margin: 0 0 4px; font-size: 1.25rem; }
 .kg-concept-modal a { display: block; padding: 4px 0; }
+
+/* ---------- موبایل: جدول شاخص ---------- */
+@media (max-width: 768px) {
+  /* ۸ ستون در ۳۹۰px یعنی ردیف‌های ۲۶۰ پیکسلی و اسکرول افقی برای دیدن یک تیتر.
+     در موبایل فقط «تاریخ | تیتر | وضعیت» می‌ماند؛ بقیه در صفحهٔ سند هست. */
+  .kg-table { min-width: 0; }
+  .kg-table th:nth-child(3), .kg-table td:nth-child(3),
+  .kg-table th:nth-child(4), .kg-table td:nth-child(4),
+  .kg-table th:nth-child(6), .kg-table td:nth-child(6),
+  .kg-table th:nth-child(7), .kg-table td:nth-child(7),
+  .kg-table th:nth-child(8), .kg-table td:nth-child(8) { display: none; }
+  .kg-table td:nth-child(2) { min-width: 0 !important; }
+  .kg-table th, .kg-table td { padding: 10px 8px; }
+  .kg-table td:nth-child(1) { width: 84px; }
+  .kg-table td:nth-child(5) { width: 92px; }
+  .kg-table { line-height: 1.6; }
+  .kg-table td { vertical-align: middle; }
+  .kg-index-foot { flex-wrap: wrap; row-gap: 4px; }
+  .kg-index-foot a { white-space: nowrap; }
+}

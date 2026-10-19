@@ -53,6 +53,6 @@
       </div>
       <div class="kg-index-foot">
         <span class="kg-small kg-muted">ذخیره‌شده توسط Knowledge Agent · کاغذ</span>
-        <a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>
+        {% if outline_edit_url %}<a class="kg-small" href="{{ outline_edit_url }}" target="_blank" rel="noopener">ویرایش در Outline</a>{% endif %}
       </div>
 {% endcall %}
