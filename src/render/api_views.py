@@ -499,7 +499,11 @@ async def api_concepts(min_docs: int = Query(1, ge=1, le=50)) -> dict[str, Any]:
             if not url:
                 continue
             did = doc_ids.get(_norm_url(url), "")
-            docs.append({"doc_id": did, "view_url": f"/view/{did}" if did else "", "url": url})
+            view = f"/view/{did}" if did else ""
+            if not view and i.isdigit():
+                # بدون Outline هم سند باید باز شود — صفحهٔ سند از SQLite
+                view = f"/doc/{i}"
+            docs.append({"doc_id": did or i, "view_url": view, "url": url})
         out.append(
             {
                 "norm": r["norm"],
@@ -531,7 +535,10 @@ def _docs_for_concept(con_row: sqlite3.Row, id_url: dict[int, str], doc_ids: dic
                 (url, url.rstrip("/")),
             ).fetchone()
         if r:
-            docs.append(_doc_row(r, doc_ids))
+            item = _doc_row(r, doc_ids)
+            if not item.get("view_url") and i.isdigit():
+                item["view_url"] = f"/doc/{i}"
+            docs.append(item)
     return docs
 
 

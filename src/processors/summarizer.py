@@ -99,7 +99,7 @@ Content:
 
 Return ONLY a JSON object with these fields:
 - entities: array of 0-8 named things concretely mentioned (people, companies, products, models) — Persian or English as written in content
-- concepts: array of 2-6 core technical/business concepts this content is ABOUT (short Persian phrases, e.g. "حافظه عامل‌های هوش مصنوعی", "گراف دانش")
+- concepts: array of 2-6 CANONICAL concepts. Persian preferred; standard English acronyms (RAG, LLM, PDF) are allowed. Each item MUST be 1-3 words and generic enough to repeat across documents (e.g. «مهندسی معکوس», «گراف دانش», «مدل زبانی», «بازیابی اطلاعات»). Never use document-specific compound phrases, headings, sentences, or comma-joined lists — those never match other documents.
 - connections: array of 0-4 short Persian phrases describing how this connects to broader AI/business topics (e.g. "مرتبط با معماری حافظه عامل‌ها")
 - contradictions: array of 0-3 Persian sentences — claims here that likely conflict with mainstream/previous knowledge, else []
 

@@ -307,10 +307,12 @@ def save_analysis(url: str, analysis) -> None:
                 a_attempts,
             )
             updated = 0
+            matched = ""
             for cand in _url_variants(url):
                 cur = conn.execute(sql, params + (cand,))
                 updated += cur.rowcount or 0
                 if updated:
+                    matched = cand
                     break
             conn.commit()
             if not updated:
@@ -319,6 +321,20 @@ def save_analysis(url: str, analysis) -> None:
                     url,
                     _url_variants(url),
                 )
+            elif matched:
+                # گراف مفاهیم مستقل از Outline: قبلاً فقط مسیر Outline مفهوم ثبت
+                # می‌کرد، پس در نصب بدون Outline هیچ مفهوم مشترکی پیدا نمی‌شد.
+                try:
+                    row = conn.execute(
+                        "SELECT id FROM content WHERE url = ?", (matched,)
+                    ).fetchone()
+                    concepts = list(getattr(analysis, "concepts", []) or [])
+                    if row and row[0] and concepts:
+                        from src.storage import concepts as _concepts
+
+                        _concepts.register_doc_concepts(int(row[0]), concepts)
+                except Exception as e:  # noqa: BLE001 — best-effort
+                    logging.getLogger(__name__).warning(f"concept register skipped: {e}")
         finally:
             conn.close()
     except Exception as e:
