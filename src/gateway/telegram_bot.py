@@ -276,7 +276,7 @@ class TelegramBot:
                 # سهمیهٔ AI تمام شده — رکورد با flag ذخیره می‌شود، بعداً خودکار خلاصه می‌شود
                 analysis = _quota_pending_analysis(e)
                 logger.warning(f"AI quota exhausted for {url} — saved as pending_resummarize")
-            sqlite_store.save_analysis(url, analysis)
+            sqlite_store.save_analysis(content.url, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
@@ -319,7 +319,7 @@ class TelegramBot:
             if not chunks:
                 return
             embedder = get_embedder()
-            vectors = await asyncio.to_thread(embedder.embed, chunks)
+            vectors = await asyncio.to_thread(embedder.embed_passages, chunks)  # prefix «passage: » — الزام e5
             
             # پیدا کردن content_id از URL
             conn = sqlite_store._get_connection()

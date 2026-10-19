@@ -71,3 +71,19 @@ curl localhost:8080/health
 3. **Outline** بالاست؟ نه — `OUTLINE_ENABLED=false`، بنابراین رجیستری اسناد خالی است و `/view/{doc_id}` سندی ندارد.
 
 برای بازگرداندن کامل: فایل `knowledge.db` سرور قبلی + `TELEGRAM_BOT_TOKEN` + `NOTION_API_KEY`/`NOTION_DATABASE_ID` لازم است.
+
+---
+
+## ۵. راه‌اندازی بات تلگرام + رفع باگ ذخیرهٔ خلاصه
+
+- `TELEGRAM_BOT_TOKEN` در `.env` (chmod 600) ست شد؛ `getMe` → `@knowledge_notion_agent_bot`.
+- polling با `allowed_updates=[message, channel_post, callback_query]` فعال است و `getUpdates` با `200 OK` پاسخ می‌گیرد. `/health` → `telegram_bot: true`.
+- **باگ رفع‌شده (مهم):** `save_content` ردیف را با URL نرمال‌شدهٔ اکسترکتور ذخیره می‌کند (مثلاً `http://arxiv.org/abs/2402.09739v3`)، ولی `save_analysis` با URL خام ورودی UPDATE می‌زد → ردیف پیدا نمی‌شد و **خلاصه بی‌صدا ذخیره نمی‌شد**. حالا:
+  * `save_analysis` چند variant را امتحان می‌کند (scheme، اسلش انتهایی، نسخهٔ arxiv) و اگر هیچ‌کدام نخورد `warning` می‌دهد؛
+  * هر دو مسیر (API و بات) `content.url` را پاس می‌دهند.
+- `POST /api/save` دیگر به‌خاطر نبود Notion خطا نمی‌دهد؛ Notion/Outline اختیاری‌اند.
+- مسیر API هم بعد از ذخیره، embedding را در پس‌زمینه می‌سازد (قبلاً فقط مسیر بات این کار را می‌کرد).
+- `_embed_content` از `embed_passages` (با prefix `passage: `) استفاده می‌کند.
+
+**تست سرتاسری واقعی:** `POST /api/save` با یک مقالهٔ arxiv →
+`success:true` · خلاصهٔ فارسی و انگلیسی، دسته `AI/ML`، اولویت `High`، ۵ برچسب و key_points در SQLite ثبت شد · ۲ chunk با ONNX int8 ایندکس شد.

@@ -150,13 +150,12 @@ async def telegram_webhook(request: Request):
 
 @app.post("/api/save", response_model=SaveResponse)
 async def api_save(request: SaveRequest):
-    """Direct API endpoint to save content."""
-    if not settings.notion_api_key:
-        return SaveResponse(
-            success=False,
-            error="Notion API not configured. Set NOTION_API_KEY in .env"
-        )
-    
+    """Direct API endpoint to save content.
+
+    Notion اختیاری است: اگر NOTION_API_KEY ست نشده باشد، محتوا در SQLite (و در صورت
+    فعال بودن، Outline) ذخیره می‌شود و پاسخ موفق برمی‌گردد — قبلاً همین‌جا با خطا
+    برمی‌گشت و مسیر ذخیره‌سازی را کامل می‌بست.
+    """
     url = request.url.strip()
     if not is_valid_url(url):
         return SaveResponse(
@@ -206,8 +205,14 @@ async def api_save(request: SaveRequest):
             logger.warning(f"AI quota exhausted for {url} — saved as pending_resummarize")
 
         # Step 2.5: Update SQLite row with AI analysis fields
-        sqlite_store.save_analysis(url, analysis)
+        # نکته: URL اکسترکتور (content.url) ممکن است نرمال‌شده باشد؛ همان را بده
+        sqlite_store.save_analysis(content.url, analysis)
         logger.info("Analysis saved to SQLite")
+        # embedding غیرهمزمان — مثل مسیر تلگرام
+        try:
+            asyncio.create_task(bot._embed_content(content))
+        except Exception as e:  # noqa: BLE001
+            logger.debug("embedding task skipped: %s", e)
         
         # Step 3: Save to Notion
         logger.info("Saving to Notion...")

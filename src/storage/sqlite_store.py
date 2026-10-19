@@ -239,8 +239,40 @@ def save_content(content: ExtractedContent, analysis=None) -> None:
         logging.getLogger(__name__).warning(f"SQLite save skipped: {e}")
 
 
+def _url_variants(url: str) -> list[str]:
+    """variants of a URL that extractors may have normalized (scheme, slash, arxiv vN)."""
+    import re as _re
+
+    base = (url or "").strip()
+    if not base:
+        return []
+    out = [base]
+    no_slash = base.rstrip("/")
+    out.append(no_slash)
+    if no_slash.startswith("https://"):
+        out.append("http://" + no_slash[len("https://"):])
+    elif no_slash.startswith("http://"):
+        out.append("https://" + no_slash[len("http://"):])
+    stripped = _re.sub(r"v\d+$", "", no_slash)  # arxiv: .../abs/2402.09739v3 → .../2402.09739
+    if stripped != no_slash:
+        out.append(stripped)
+        out.append(stripped.replace("https://", "http://") if stripped.startswith("https://") else stripped.replace("http://", "https://"))
+    seen, uniq = set(), []
+    for u in out:
+        if u and u not in seen:
+            seen.add(u)
+            uniq.append(u)
+    return uniq
+
+
 def save_analysis(url: str, analysis) -> None:
-    """Update the AI-analysis fields of an existing row (by url)."""
+    """Update the AI-analysis fields of an existing row (by url).
+
+    URL اکسترکتور ممکن است با URL ورودی فرق کند (http/https، اسلش انتهایی،
+    نسخهٔ arxiv مثل v3). قبلاً همان URL خام در WHERE می‌رفت و اگر ایندکس را
+    نمی‌زد، خلاصه در دیتابیس خالی می‌ماند بی‌صدا. حالا variants امتحان می‌شود
+    و در صورت عدم تطابق، warning لاگ می‌شود.
+    """
     try:
         init_db()
         conn = _get_connection()
@@ -255,29 +287,38 @@ def save_analysis(url: str, analysis) -> None:
                 "contradictions": list(getattr(analysis, "contradictions", []) or []),
             }
             a_status, a_error, a_attempts = _analysis_flag_values(analysis)
-            conn.execute(
-                """
+            sql = """
                 UPDATE content SET
                     category=?, priority=?, tags=?, summary_fa=?,
                     summary_en=?, key_points=?, analysis_meta=?,
                     analysis_status=?, analysis_error=?, analysis_attempts=?
                 WHERE url=?
-                """,
-                (
-                    analysis.category or "",
-                    analysis.priority or "",
-                    json.dumps(analysis.tags or [], ensure_ascii=False),
-                    analysis.summary_fa or "",
-                    analysis.summary_en or "",
-                    json.dumps(analysis.key_points or [], ensure_ascii=False),
-                    json.dumps(meta, ensure_ascii=False) if any(meta.values()) else "",
-                    a_status,
-                    a_error,
-                    a_attempts,
-                    url,
-                ),
+                """
+            params = (
+                analysis.category or "",
+                analysis.priority or "",
+                json.dumps(analysis.tags or [], ensure_ascii=False),
+                analysis.summary_fa or "",
+                analysis.summary_en or "",
+                json.dumps(analysis.key_points or [], ensure_ascii=False),
+                json.dumps(meta, ensure_ascii=False) if any(meta.values()) else "",
+                a_status,
+                a_error,
+                a_attempts,
             )
+            updated = 0
+            for cand in _url_variants(url):
+                cur = conn.execute(sql, params + (cand,))
+                updated += cur.rowcount or 0
+                if updated:
+                    break
             conn.commit()
+            if not updated:
+                logging.getLogger(__name__).warning(
+                    "save_analysis: no content row matched %s (variants tried: %s) — analysis not persisted",
+                    url,
+                    _url_variants(url),
+                )
         finally:
             conn.close()
     except Exception as e:
