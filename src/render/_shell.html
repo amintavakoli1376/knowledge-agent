@@ -173,26 +173,45 @@
   var bar = document.querySelector('.kg-statusbar');
   if (!bar) return;
   var docId = bar.dataset.doc;
+  var isContent = docId.indexOf('c:') === 0;   // c:<content.id> → سند SQLite بدون Outline
+  var statusUrl = isContent ? '/api/content/'+docId.slice(2)+'/status' : '/api/docs/'+docId+'/status';
   var now = bar.querySelector('.kg-st-now');
   var vbox = document.querySelector('.kg-versions');
-  var FA = {Unread:'خوانده‌نشده', Read:'خوانده‌شده', Starred:'ستاره‌دار', Archived:'آرشیو'};
+  var FA = {Unread:'خوانده‌نشده', Read:'خوانده‌شده', Starred:'ستاره‌دار', Archived:'بایگانی'};
+  var cur = bar.dataset.status || '';
   function reflect(st){
     bar.querySelectorAll('.kg-st2').forEach(function(b){
       b.classList.toggle('on', b.dataset.st === st);
     });
     if (st) now.textContent = 'وضعیت: ' + (FA[st]||st);
   }
-  fetch('/api/docs/'+docId).then(r=>r.ok?r.json():null).then(d=>{
-    if(d) reflect(d.status);
-  }).catch(()=>{});
+  // نشان وضعیت در بلوک متادیتا هم بدون رفرش عوض شود
+  function syncBadge(from, to){
+    if (!from || !to) return;
+    var fromLabel = FA[from] || from, toLabel = FA[to] || to;
+    document.querySelectorAll('.kg-props .kg-badge').forEach(function(el){
+      var t = el.textContent.trim();
+      if (t === fromLabel || t === from) el.textContent = toLabel;
+    });
+  }
+  if (isContent) {
+    // وضعیت از خود صفحه می‌آید — یک درخواست اضافه لازم نیست
+    if (bar.dataset.status) reflect(bar.dataset.status);
+  } else {
+    fetch('/api/docs/'+docId).then(r=>r.ok?r.json():null).then(d=>{
+      if(d) reflect(d.status);
+    }).catch(()=>{});
+  }
   bar.querySelectorAll('.kg-st2[data-st]').forEach(function(b){
     b.addEventListener('click', function(){
-      fetch('/api/docs/'+docId+'/status', {
+      fetch(statusUrl, {
         method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({status: b.dataset.st})
-      }).then(r=>r.json()).then(d=>{
-        if(d.status) reflect(d.status);
-      }).catch(()=>{});
+      }).then(r=>r.ok?r.json():Promise.reject(r.status)).then(d=>{
+        if(d.status){ syncBadge(cur, d.status); cur = d.status; reflect(d.status); }
+      }).catch(function(e){
+        if(now) now.textContent = 'تغییر وضعیت انجام نشد ('+e+')';
+      });
     });
   });
   var vbtn = bar.querySelector('.kg-versions-btn');

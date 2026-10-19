@@ -387,7 +387,9 @@ async def kaghaz_doc(request: Request, content_id: str):
             "title": title,
             "crumb": title[:40],
             "doc_emoji": "",
-            "doc_id": "",
+            # پیشوند c: یعنی سند SQLite — جاوااسکریپت با /api/content/{id}/status کار می‌کند
+            "doc_id": f"c:{r['id']}",
+            "doc_status": r["status"] or "Unread",
             "properties": render_properties(meta_render),
             "body": "\n".join(body),
             "tree_docs": tree,

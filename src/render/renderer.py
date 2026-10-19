@@ -31,6 +31,7 @@ STATUS_BADGE = {
     "reading": ("sky", "در حال خواندن"),
     "read": ("green", "خوانده‌شده"),
     "archived": ("gray", "بایگانی"),
+    "starred": ("amber", "ستاره‌دار"),
 }
 
 

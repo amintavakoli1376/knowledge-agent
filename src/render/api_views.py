@@ -434,6 +434,36 @@ async def api_set_status(doc_id: str, request: Request) -> dict[str, Any]:
     return {"doc_id": doc_id, "status": status, "starred_at": now if status == "Starred" else ""}
 
 
+@router.patch("/content/{content_id}/status")
+async def api_set_content_status(content_id: int, request: Request) -> dict[str, Any]:
+    """تغییر وضعیت سندِ SQLite با شناسهٔ content.id (بدون نیاز به Outline).
+
+    چرا: مسیر قبلی با doc_id رجیستری Outline کار می‌کرد؛ در نصب بدون Outline
+    هیچ راهی برای ستاره/خوانده‌شده/آرشیو کردن سند نبود.
+    """
+    body = await request.json()
+    status = str(body.get("status", "")).strip()
+    if not _STATUS_RE.match(status):
+        raise HTTPException(400, "status must be Unread|Read|Starred|Archived")
+    status = status.capitalize()
+    now = datetime.now(timezone.utc).isoformat()
+    with _con(_KB_PATH) as con:
+        cur = con.execute(
+            "UPDATE content SET status = ?,"
+            " starred_at = CASE WHEN ? = 'Starred' THEN ? ELSE NULL END"
+            " WHERE id = ?",
+            (status, status, now, content_id),
+        )
+        con.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "content id not found")
+    return {
+        "content_id": content_id,
+        "status": status,
+        "starred_at": now if status == "Starred" else "",
+    }
+
+
 @router.post("/docs/{doc_id}/tags")
 async def api_set_tags(doc_id: str, request: Request) -> dict[str, Any]:
     """U2c — افزودن/حذف برچسب: {add: [...]} یا {remove: [...]} یا {tags: [...]} (جایگزینی کامل).
