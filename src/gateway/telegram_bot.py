@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -295,11 +296,27 @@ class TelegramBot:
             
         except ExtractionError as e:
             logger.error(f"Extraction failed for {e.url}: {e}")
-            await processing_msg.edit_text(
-                f"❌ **محتوا استخراج نشد**\n\n"
-                f"این لینک قابل خواندن نیست (احتمالاً نیاز به لاگین داره یا پست حذف شده).\n\n"
-                f"`{str(e)[:200]}`"
-            )
+            is_li_group = "linkedin" in (e.url or "") and "groupPost" in (e.url or "")
+            if is_li_group:
+                # پست گروهی لینکدین برای کاربر ناشناس 404 است — راه واقعی، متن خود پست است
+                await processing_msg.edit_text(
+                    "❌ **این پست داخل یک گروه لینکدین است**\n\n"
+                    "لینکدین محتوای پست‌های گروهی را بدون عضویت و ورود نشان نمی‌دهد، "
+                    "پس ربات نمی‌تواند خودش متن را بخواند.\n\n"
+                    "راه‌حل: متن پست را همین‌جا بفرستید تا خلاصه و ذخیره شود.",
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("✍️ متن پست را می‌فرستم", callback_data="mode:save")]]
+                    ),
+                )
+            else:
+                await processing_msg.edit_text(
+                    f"❌ **محتوا استخراج نشد**\n\n"
+                    f"این لینک قابل خواندن نیست (احتمالاً نیاز به لاگین داره یا پست حذف شده).\n\n"
+                    f"`{str(e)[:200]}`",
+                    reply_markup=InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("✍️ متن را دستی می‌فرستم", callback_data="mode:save")]]
+                    ),
+                )
         except Exception as e:
             logger.error(f"Error processing link: {e}")
             await processing_msg.edit_text(
@@ -441,11 +458,15 @@ class TelegramBot:
         try:
             # متن پست رو مستقیم به عنوان محتوا می‌دیم (نه لینک داخلش)
             # لینک‌های داخل متن توی خلاصه می‌مونن چون summarizer کل متن رو می‌بینه
+            # متن دستی (حالت «ذخیره»): url خالی یعنی همهٔ یادداشت‌ها یک ردیف را
+            # بازنویسی می‌کنند و save_analysis هم ردیف را پیدا نمی‌کند. یک شناسهٔ
+            # یکتا می‌سازیم تا هر یادداشت سند مستقل شود.
+            u = post_url or f"note://{int(time.time() * 1000)}"
             content = ExtractedContent(
-                url=post_url,  # لینک t.me به عنوان لینک پست
-                title=text[:80],
+                url=u,
+                title=(text.strip().splitlines()[0] if text.strip() else text)[:80],
                 full_text=text,
-                platform="telegram",
+                platform=("telegram" if post_url else "note"),
             )
             sqlite_store.save_content(content)
             
@@ -455,7 +476,7 @@ class TelegramBot:
             except QuotaExceededError as e:
                 analysis = _quota_pending_analysis(e)
                 logger.warning(f"AI quota exhausted for {post_url or 'raw post'} — saved as pending_resummarize")
-            sqlite_store.save_analysis(post_url or text, analysis)
+            sqlite_store.save_analysis(content.url, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)

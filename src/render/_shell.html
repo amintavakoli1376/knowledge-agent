@@ -44,7 +44,7 @@
         </div>
         <div id="kgTree" class="kg-tree kg-acc-body" hidden>
           {% for d in tree_docs %}
-          <a href="/view/{{ d.id }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
+          <a href="{{ d.href or ('/view/' ~ d.id) }}" title="{{ d.title }}" {% if d.id == active_doc %}class="active"{% endif %}>{{ d.title[:34] }}</a>
           {% endfor %}
         </div>
         <!-- مفاهیم مشترک — کشویی مثل درخت؛ محتوای زنده از /api/concepts -->

@@ -21,6 +21,19 @@ class LinkedInExtractor(BaseExtractor):
     def can_handle(self, url: str) -> bool:
         return bool(re.search(r'(?:linkedin\.com|lnkd\.in)/', url, re.IGNORECASE))
     
+    @staticmethod
+    def _activity_variant(url: str) -> Optional[str]:
+        """پست گروهی → نسخهٔ activity.
+
+        آدرس `urn:li:groupPost:<group>-<activity>` برای کاربر ناشناس 404 است، ولی
+        همان پست با `urn:li:activity:<activity>` گاهی صفحهٔ عمومی دارد. یک تلاش
+        ارزان که بعضی پست‌های گروهی را نجات می‌دهد.
+        """
+        m = re.search(r"urn:li:groupPost:\d+-(\d+)", url)
+        if not m:
+            return None
+        return f"https://www.linkedin.com/feed/update/urn:li:activity:{m.group(1)}"
+
     async def extract(self, url: str) -> ExtractedContent:
         """Extract content from a LinkedIn post URL."""
         try:
@@ -31,17 +44,22 @@ class LinkedInExtractor(BaseExtractor):
             # 1. NEW primary: page ld+json / meta description. LinkedIn embeds
             # the full post text as articleBody in application/ld+json even
             # behind the authwall — no login, no third-party, ~1 request.
-            page_result = await self._extract_from_page(fetch_url)
-            if page_result:
-                text, author = page_result
-                return ExtractedContent(
-                    title=self._generate_title(text),
-                    full_text=text[:8000],
-                    url=url,
-                    platform='linkedin',
-                    author=author,
-                    metadata={'method': 'page-ldjson'}
-                )
+            page_candidates = [fetch_url]
+            alt = self._activity_variant(fetch_url)
+            if alt:
+                page_candidates.append(alt)
+            for cand in page_candidates:
+                page_result = await self._extract_from_page(cand)
+                if page_result:
+                    text, author = page_result
+                    return ExtractedContent(
+                        title=self._generate_title(text),
+                        full_text=text[:8000],
+                        url=url,
+                        platform='linkedin',
+                        author=author,
+                        metadata={'method': 'page-ldjson', 'fetched_via': cand}
+                    )
 
             # 2. Try document transcript next (full PDF/PPT text, no login)
             doc_result = await self._extract_document_transcript(fetch_url)
@@ -120,6 +138,33 @@ class LinkedInExtractor(BaseExtractor):
             pass
         return url
 
+    @staticmethod
+    def _looks_like_authwall(html: str) -> bool:
+        """آیا این HTML صفحهٔ پست است یا دیوار ورود/ثبت‌نام لینکدین؟"""
+        low = html.lower()
+        markers = (
+            "join linkedin now",
+            "agree & join linkedin",
+            "authwall",
+            "guest_homepage",
+            "sign up | linkedin",
+            "session_redirect",
+            "لطفاً وارد شوید",
+        )
+        return any(m in low for m in markers)
+
+    @staticmethod
+    def _is_boilerplate_text(text: str) -> bool:
+        """متن‌های عمومی لینکدین که محتوای پست نیستند."""
+        low = (text or "").lower()
+        bad = (
+            "500 million+ members",
+            "manage your professional identity",
+            "join linkedin",
+            "build and engage with your professional network",
+        )
+        return any(b in low for b in bad)
+
     async def _extract_from_page(self, url: str) -> Optional[tuple]:
         """Fetch the post page and pull text from application/ld+json.
 
@@ -140,6 +185,12 @@ class LinkedInExtractor(BaseExtractor):
         except Exception:
             return None
 
+        # 🔒 صفحهٔ لاگین/ثبت‌نام به‌جای پست: متأسفانه عنوان و description عمومی
+        # لینکدین («500 million+ members …») به‌راحتی به‌عنوان «متن پست» ذخیره
+        # می‌شد و سند زباله می‌ساخت. هر نشانهٔ authwall ⇒ این تلاش شکست است.
+        if self._looks_like_authwall(html):
+            return None
+
         # 1) ld+json — walk every block for articleBody / headline.
         # ⚠️ articleBody (متن کامل پست) بر headline (تیتر = برش اول متن) اولویت دارد —
         # ترتیب keys قبلی باعث می‌شد فقط ۱۳۶ کاراکترِ headline ذخیره شود.
@@ -149,7 +200,7 @@ class LinkedInExtractor(BaseExtractor):
             except Exception:
                 continue
             found = self._find_json_text(data, ('articleBody', 'headline', 'description'), prefer='articleBody')
-            if found and len(found.strip()) > 30:
+            if found and len(found.strip()) > 30 and not self._is_boilerplate_text(found):
                 author = self._author_from_ldjson(data) or self._author_from_html(html) \
                     or self._author_from_url(url)
                 return found.strip()[:8000], author
@@ -160,7 +211,8 @@ class LinkedInExtractor(BaseExtractor):
         if m:
             content = m.group(1).strip()
             boilerplate = ('linkedin and 3rd parties', 'cookie policy')
-            if len(content) > 30 and not content.lower().startswith(boilerplate):
+            if len(content) > 30 and not content.lower().startswith(boilerplate) \
+                    and not self._is_boilerplate_text(content):
                 author = self._author_from_html(html) or self._author_from_url(url)
                 return content[:8000], author
 

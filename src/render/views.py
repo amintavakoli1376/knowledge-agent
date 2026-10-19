@@ -195,7 +195,7 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
     with _con(_KB_PATH) as kb:
         where_sql = (" WHERE " + " AND ".join(where)) if where else ""
         crows = kb.execute(
-            f"SELECT url, title, platform, category, tags, summary_fa, author, status,"
+            f"SELECT id, url, title, platform, category, tags, summary_fa, author, status,"
             f" saved_at, full_text FROM content{where_sql} ORDER BY {order}",
             params,
         ).fetchall()
@@ -208,6 +208,9 @@ async def kaghaz_index(request: Request, q: str = "", status: str = "", category
             did_t = title_map.get((r["title"] or "").strip(), "")
             if did_t:
                 item["view_url"] = f"/view/{did_t}"
+        if not item["view_url"] and r["id"] is not None:
+            # بدون Outline هم سند باید باز شود — صفحهٔ سند از خودِ knowledge.db
+            item["view_url"] = f"/doc/{r['id']}"
         if item["source_url"].startswith(("file://", "telegram-file://")):
             item["source_host"] = "PDF"
         rows.append(
@@ -298,6 +301,100 @@ async def kaghaz_concept(request: Request, norm: str):
             "tree_docs": [],
             "active": "",
             "active_doc": "",
+        },
+    )
+
+
+@router.get("/doc/{content_id}", response_class=HTMLResponse)
+async def kaghaz_doc(request: Request, content_id: str):
+    """صفحهٔ سند از SQLite — مستقل از Outline.
+
+    چرا: در نصب‌های بدون Outline، `/view/{doc_id}` سند ندارد و تیترها در جدول
+    شاخص لینک نمی‌شدند. این مسیر همان محتوای ذخیره‌شده (خلاصه/برچسب/متن) را
+    نشان می‌دهد و شناسه‌اش `content.id` است.
+    """
+    import html as _html
+    import json as _json
+
+    with _con(_KB_PATH) as kb:
+        r = kb.execute(
+            "SELECT id, url, title, platform, category, priority, tags, summary_fa,"
+            " summary_en, key_points, author, status, saved_at, full_text FROM content WHERE id = ?",
+            (content_id,),
+        ).fetchone()
+        tree_rows = kb.execute(
+            "SELECT id, title FROM content ORDER BY saved_at DESC LIMIT 40"
+        ).fetchall()
+    if not r:
+        raise HTTPException(404, "سند پیدا نشد")
+
+    title = (r["title"] or "بدون عنوان").strip()
+
+    def _lst(v) -> list[str]:
+        try:
+            out = _json.loads(v or "[]")
+            return [str(x) for x in out] if isinstance(out, list) else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    body: list[str] = []
+    if r["summary_fa"]:
+        body.append('<div class="kg-blocks"><h2>خلاصه</h2>')
+        for para in str(r["summary_fa"]).split("\n"):
+            para = para.strip()
+            if para:
+                body.append(f"<p>{_html.escape(para)}</p>")
+        body.append("</div>")
+    kp = _lst(r["key_points"])
+    if kp:
+        body.append('<div class="kg-blocks"><h2>نکته‌های کلیدی</h2><ul>')
+        body += [f"<li>{_html.escape(k)}</li>" for k in kp]
+        body.append("</ul></div>")
+    tags = _lst(r["tags"])
+    if tags:
+        body.append('<div class="kg-blocks"><h2>برچسب‌ها</h2><p>' + "، ".join(_html.escape(t) for t in tags) + "</p></div>")
+    src = (r["url"] or "")
+    if src:
+        body.append(
+            '<div class="kg-blocks"><h2>منبع</h2><p><a href="'
+            + _html.escape(src)
+            + '" target="_blank" rel="noopener">'
+            + _html.escape(_host(src))
+            + "</a></p></div>"
+        )
+    if r["full_text"]:
+        body.append(
+            '<div class="kg-blocks"><details><summary>متن کامل</summary><pre style="white-space:pre-wrap">'
+            + _html.escape(str(r["full_text"]))
+            + "</pre></details></div>"
+        )
+
+    meta_render = {
+        "date": (r["saved_at"] or "")[:10],
+        "category": r["category"] or "",
+        "platform": r["platform"] or "",
+        "status": r["status"] or "",
+        "author": r["author"] or "",
+        "tags": "، ".join(tags),
+        "source_url": src,
+        "source_host": _host(src) if src else "",
+    }
+    tree = [{"id": t["id"], "title": t["title"] or "", "href": f"/doc/{t['id']}"} for t in tree_rows]
+    return templates.TemplateResponse(
+        request,
+        "kaghaz_view.html",
+        {
+            "title": title,
+            "crumb": title[:40],
+            "doc_emoji": "",
+            "doc_id": "",
+            "properties": render_properties(meta_render),
+            "body": "\n".join(body),
+            "tree_docs": tree,
+            "active": "",
+            "active_doc": "",
+            "outline_edit_url": "",
+            "copy_js": COPY_JS,
         },
     )
 
