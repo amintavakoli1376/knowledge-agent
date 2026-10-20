@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import settings
+from ..storage.db import connect_db
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ _cache: dict[str, Any] = {}
 
 
 def _con() -> sqlite3.Connection:
-    con = sqlite3.connect(_DB_PATH)
+    con = connect_db(_DB_PATH)
     con.execute(
         "CREATE TABLE IF NOT EXISTS outline_docs ("
         " source_url TEXT PRIMARY KEY,"

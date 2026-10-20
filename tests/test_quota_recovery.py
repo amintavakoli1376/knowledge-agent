@@ -17,6 +17,7 @@ from src.models import AIAnalysis, ExtractedContent
 from src.processors.summarizer import (
     ContentSummarizer,
     QuotaExceededError,
+    SummarizationError,
     _quota_pending_analysis,
     is_quota_error,
 )
@@ -135,12 +136,11 @@ class TestAnalyzeQuotaBehavior:
         with pytest.raises(QuotaExceededError):
             asyncio.run(s.analyze(make_content()))
 
-    def test_analyze_nonquota_error_keeps_legacy_behavior(self):
-        """خطای غیرسهمیه‌ای — رفتار قدیمی حفظ می‌شود (متن خطا در summary)."""
+    def test_analyze_nonquota_error_raises_instead_of_storing_error_text(self):
+        """خطای غیرسهمیه‌ای — استثنا بالا می‌رود؛ هیچ متن خطایی در summary ذخیره نمی‌شود."""
         s = self._summarizer_with_error(FakeAPIError("connection reset", status_code=500))
-        result = asyncio.run(s.analyze(make_content()))
-        assert "connection reset" in result.summary_fa
-        assert result.analysis_status == ""
+        with pytest.raises(SummarizationError):
+            asyncio.run(s.analyze(make_content()))
 
     def test_pending_analysis_has_empty_summaries_and_flag(self):
         p = make_pending_analysis()

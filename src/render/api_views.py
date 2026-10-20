@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from src.config import settings
 from src.storage.sqlite_store import _snapshot_if_exists
+from ..storage.db import connect_db
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def _norm_url(u: str) -> tuple[str, str]:
 
 
 def _con(path: _KB_PATH | _REG_PATH) -> sqlite3.Connection:  # type: ignore[valid-type]
-    con = sqlite3.connect(path)
+    con = connect_db(path)
     con.row_factory = sqlite3.Row
     return con
 

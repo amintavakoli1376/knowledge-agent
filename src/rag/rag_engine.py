@@ -19,6 +19,7 @@ from ..config import settings
 from ..storage.sqlite_store import _get_connection
 from .embedder import get_embedder
 from . import vector_store
+from ..storage.db import connect_db
 
 logger = logging.getLogger(__name__)
 
@@ -322,7 +323,7 @@ class RagEngine:
 
                 return -(int(hashlib.sha1(u.encode()).hexdigest()[:8], 16) % 1_000_000_000) - 1
 
-            conn = sqlite3.connect(_CDB)
+            conn = connect_db(_CDB)
             conn.row_factory = sqlite3.Row
             try:
                 cand_ids: list[int] = []

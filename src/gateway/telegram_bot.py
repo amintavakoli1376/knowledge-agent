@@ -16,6 +16,7 @@ from ..processors.summarizer import (
     ContentSummarizer,
     QuotaExceededError,
     _quota_pending_analysis,
+    SummarizationError,
 )
 from ..storage.notion import NotionStorage
 from ..storage import sqlite_store
@@ -24,6 +25,7 @@ from ..rag.chunker import chunk_text
 from ..rag.embedder import get_embedder
 from ..rag import vector_store
 from ..rag.rag_engine import RagEngine
+from ..utils.errors import friendly_error
 
 logger = logging.getLogger(__name__)
 URL_REGEX = re.compile(r'(https?://[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?)')
@@ -219,10 +221,26 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"RAG ask failed: {e}")
             await processing.edit_text(
-                f"❌ **خطا در جستجوی دانش**\n\n`{str(e)[:200]}`",
+                f"❌ **جست‌وجو انجام نشد**\n\n{friendly_error(e, 'rag')}",
                 reply_markup=self._back_to_menu_keyboard(),
             )
     
+    async def _analyze_or_pending(self, content, processing_msg, label: str):
+        """تحلیل با AI؛ در خطا پیام کاربرپسند + رکورد pending (بدون متن خطا در summary)."""
+        try:
+            return await self.summarizer.analyze(content)
+        except QuotaExceededError as e:
+            logger.warning(f"AI quota exhausted for {label} — saved as pending_resummarize")
+            return _quota_pending_analysis(e)
+        except SummarizationError as e:
+            logger.error(f"Summarization failed for {label}: {type(e).__name__}: {e}")
+            await processing_msg.edit_text(
+                "⚠️ **خلاصه ساخته نشد**\n\n"
+                f"{friendly_error(e, 'llm')}\n\n"
+                "محتوا ذخیره شد و خلاصه خودکار دوباره تلاش می‌شود."
+            )
+            return _quota_pending_analysis(e)
+
     async def _process_link(self, update: Update, url: str):
         """پردازش لینک (استخراج + خلاصه + ذخیره)."""
         # ⚡ چک تکراری: اگه قبلاً ذخیره شده، سریع از DB نمایش بده
@@ -271,12 +289,7 @@ class TelegramBot:
             sqlite_store.save_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            try:
-                analysis = await self.summarizer.analyze(content)
-            except QuotaExceededError as e:
-                # سهمیهٔ AI تمام شده — رکورد با flag ذخیره می‌شود، بعداً خودکار خلاصه می‌شود
-                analysis = _quota_pending_analysis(e)
-                logger.warning(f"AI quota exhausted for {url} — saved as pending_resummarize")
+            analysis = await self._analyze_or_pending(content, processing_msg, url)
             sqlite_store.save_analysis(content.url, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
@@ -311,8 +324,7 @@ class TelegramBot:
             else:
                 await processing_msg.edit_text(
                     f"❌ **محتوا استخراج نشد**\n\n"
-                    f"این لینک قابل خواندن نیست (احتمالاً نیاز به لاگین داره یا پست حذف شده).\n\n"
-                    f"`{str(e)[:200]}`",
+                    f"{friendly_error(e, 'extract')}",
                     reply_markup=InlineKeyboardMarkup(
                         [[InlineKeyboardButton("✍️ متن را دستی می‌فرستم", callback_data="mode:save")]]
                     ),
@@ -320,9 +332,7 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Error processing link: {e}")
             await processing_msg.edit_text(
-                f"❌ **خطا در پردازش لینک**\n\n"
-                f"`{str(e)[:200]}`\n\n"
-                "لطفاً دوباره تلاش کنید یا لینک دیگری بفرستید."
+                f"❌ **پردازش لینک انجام نشد**\n\n{friendly_error(e, 'extract')}"
             )
     
     async def _embed_content(self, content: ExtractedContent) -> None:
@@ -423,11 +433,7 @@ class TelegramBot:
             sqlite_store.save_content(content)
 
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            try:
-                analysis = await self.summarizer.analyze(content)
-            except QuotaExceededError as e:
-                analysis = _quota_pending_analysis(e)
-                logger.warning(f"AI quota exhausted for {content.url} — saved as pending_resummarize")
+            analysis = await self._analyze_or_pending(content, processing_msg, content.url)
             sqlite_store.save_analysis(content.url, analysis)
 
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
@@ -447,7 +453,7 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Error processing document: {e}")
             await processing_msg.edit_text(
-                f"❌ **خطا در پردازش فایل**\n\n`{str(e)[:200]}`"
+                f"❌ **فایل پردازش نشد**\n\n{friendly_error(e, 'document')}"
             )
 
     async def _process_raw_post(self, update: Update, text: str, post_url: str = ""):
@@ -471,11 +477,7 @@ class TelegramBot:
             sqlite_store.save_content(content)
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
-            try:
-                analysis = await self.summarizer.analyze(content)
-            except QuotaExceededError as e:
-                analysis = _quota_pending_analysis(e)
-                logger.warning(f"AI quota exhausted for {post_url or 'raw post'} — saved as pending_resummarize")
+            analysis = await self._analyze_or_pending(content, processing_msg, post_url or 'raw post')
             sqlite_store.save_analysis(content.url, analysis)
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
@@ -496,7 +498,7 @@ class TelegramBot:
             logger.error(f"Error processing raw post: {e}")
             await processing_msg.edit_text(
                 f"❌ **خطا در پردازش پست**\n\n"
-                f"`{str(e)[:200]}`"
+                f"{friendly_error(e, 'save')}"
             )
     
     @staticmethod

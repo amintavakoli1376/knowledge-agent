@@ -39,6 +39,10 @@ MAX_RESUMMARIZE_ATTEMPTS = 5
 RECOVERY_SLEEP_SECONDS = 3.0
 
 
+class SummarizationError(RuntimeError):
+    """خلاصه‌سازی شکست خورد (غیر از سهمیه). متن خطا فقط لاگ می‌شود."""
+
+
 class QuotaExceededError(RuntimeError):
     """خطای سهمیه‌ی سرویس AI (429) — قابل ریکاوی بعداً (مثلاً پس از شارژ سهمیه)."""
 
@@ -217,13 +221,8 @@ Respond with ONLY the JSON object, no other text."""
                 logger.error(f"Summarization blocked by AI quota (429): {e}")
                 raise QuotaExceededError(str(e)[:200]) from e
             logger.error(f"Summarization error: {e}")
-            return AIAnalysis(
-                summary_fa=f"خطا در خلاصه‌سازی: {str(e)}",
-                summary_en=f"Summarization error: {str(e)}",
-                category="General",
-                tags=["error"],
-                priority="Low"
-            )
+            # هیچ متن خطایی در فیلد summary ذخیره نمی‌شود؛ caller پیام کاربرپسند می‌دهد
+            raise SummarizationError(str(e)[:300]) from e
 
         try:
             # استخراج JSON خالص از پاسخ (ممکنه مدل متن اضافی بذاره)

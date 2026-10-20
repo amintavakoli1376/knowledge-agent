@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ExtractedContent
+from .db import connect_db
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 DB_PATH = DATA_DIR / "knowledge.db"
@@ -19,7 +20,7 @@ DB_PATH = DATA_DIR / "knowledge.db"
 
 def _get_connection() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 

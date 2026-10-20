@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import sqlite3
+from .db import connect_db
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def _norm(name: str) -> str:
 
 
 def init_concepts() -> None:
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         conn.execute(
             """
@@ -66,7 +67,7 @@ def register_doc_concepts(doc_id: int, concepts: list[str]) -> list[str]:
     if not doc_id or not concepts:
         return []
     init_concepts()
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         exists = conn.execute(
             "SELECT 1 FROM content WHERE id = ?", (doc_id,)
@@ -81,7 +82,7 @@ def register_doc_concepts(doc_id: int, concepts: list[str]) -> list[str]:
     finally:
         conn.close()
     shared: list[str] = []
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         for raw in concepts[:10]:
             display = (raw or "").strip()[:120]
@@ -129,7 +130,7 @@ def shared_concepts_for_preview(candidates: list[str]) -> list[str]:
         return []
     init_concepts()
     out: list[str] = []
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         for raw in candidates[:10]:
             norm = _norm(raw)
@@ -150,7 +151,7 @@ def shared_concepts_for_doc(doc_id: int) -> list[str]:
     """مفاهیم مشترکی که این سند دارد (برای ویکی‌لینک‌گذاری)."""
     init_concepts()
     out: list[str] = []
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         for (ids, display,) in conn.execute(
             "SELECT doc_ids, display FROM concepts WHERE doc_count >= 2"
@@ -166,7 +167,7 @@ def all_shared_concepts(limit: int = 200) -> list[tuple[str, int, list[int]]]:
     """همهٔ مفاهیم مشترک (display, doc_count, doc_ids) — برای صفحهٔ مفهومی فاز ۲."""
     init_concepts()
     out: list[tuple[str, int, list[int]]] = []
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_db(DB_PATH)
     try:
         for norm, display, cnt, ids in conn.execute(
             "SELECT norm, display, doc_count, doc_ids FROM concepts WHERE doc_count >= 2 ORDER BY doc_count DESC LIMIT ?",

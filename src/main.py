@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .gateway.telegram_bot import TelegramBot
+from .utils.errors import friendly_error
 from .utils.url_parser import detect_platform, is_valid_url
 from .extractors.website import WebsiteExtractor
 from .extractors.arxiv import ArxivExtractor
@@ -28,7 +29,7 @@ from .extractors.telegram_channel import TelegramChannelExtractor
 from .processors.summarizer import ContentSummarizer, QuotaExceededError
 from .storage.notion import NotionStorage
 from .storage import sqlite_store
-from .models import SaveRequest, SaveResponse, SetupRequest, SetupResponse
+from .models import SaveRequest, SaveResponse
 
 # Configure logging
 logging.basicConfig(
@@ -197,7 +198,7 @@ async def telegram_webhook(request: Request):
         logger.error(f"Webhook error: {e}")
         return JSONResponse(
             status_code=500,
-            content={"error": str(e)}
+            content={"error": "internal error"},
         )
 
 
@@ -291,48 +292,8 @@ async def api_save(request: SaveRequest):
         )
         
     except Exception as e:
-        logger.error(f"Save failed: {e}")
-        return SaveResponse(
-            success=False,
-            error=str(e)[:500]
-        )
-
-
-@app.post("/api/setup", response_model=SetupResponse)
-async def api_setup(request: SetupRequest):
-    """Auto-create the Notion Knowledge Base database."""
-    if not settings.notion_api_key:
-        return SetupResponse(
-            success=False,
-            error="Notion API not configured. Set NOTION_API_KEY in .env"
-        )
-    
-    try:
-        db_id, db_url = await storage.create_database(request.parent_page_id)
-        
-        # Auto-save to .env (if running locally)
-        env_path = Path(".env")
-        if env_path.exists():
-            env_content = env_path.read_text()
-            if "NOTION_DATABASE_ID=" in env_content:
-                env_content = re.sub(
-                    r"NOTION_DATABASE_ID=.*",
-                    f"NOTION_DATABASE_ID={db_id}",
-                    env_content
-                )
-                env_path.write_text(env_content)
-        
-        return SetupResponse(
-            success=True,
-            database_id=db_id,
-            database_url=db_url,
-        )
-        
-    except Exception as e:
-        return SetupResponse(
-            success=False,
-            error=str(e)[:500]
-        )
+        logger.error(f"Save failed: {type(e).__name__}: {e}")
+        return SaveResponse(success=False, error=friendly_error(e, "save"))
 
 
 @app.get("/")
