@@ -5,6 +5,7 @@ from typing import Optional
 
 from .base import BaseExtractor, ExtractionError
 from ..models import ExtractedContent
+from ..utils.url_guard import safe_get, validate_public_url
 from ..utils.url_parser import detect_platform
 
 
@@ -27,7 +28,8 @@ class WebsiteExtractor(BaseExtractor):
     
     async def extract(self, url: str) -> ExtractedContent:
         try:
-            response = await self.client.get(url)
+            validate_public_url(url)  # گارد SSRF (آدرس‌های داخلی رد می‌شوند)
+            response = await safe_get(self.client, url)
             response.raise_for_status()
             html = response.text
             

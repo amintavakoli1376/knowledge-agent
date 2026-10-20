@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .gateway.telegram_bot import TelegramBot
 from .utils.errors import friendly_error
+from .utils.url_guard import UnsafeURLError, validate_public_url
 from .utils.url_parser import detect_platform, is_valid_url
 from .extractors.website import WebsiteExtractor
 from .extractors.arxiv import ArxivExtractor
@@ -243,6 +244,8 @@ async def api_save(request: SaveRequest):
         logger.info(f"Extracting content from {platform}: {url}")
         content = await extractor.extract(url)
         
+        validate_public_url(str(request.url))  # گارد SSRF پیش از هر fetch
+
         # Step 1.5: Store full text in SQLite (best-effort, for future RAG)
         sqlite_store.save_content(content)
         logger.info("Full content saved to SQLite")

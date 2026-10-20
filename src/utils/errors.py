@@ -13,6 +13,9 @@ def _text(exc: BaseException) -> str:
 def friendly_error(exc: BaseException, kind: str = "generic") -> str:
     t = _text(exc)
 
+    if "unsafeurl" in t or "آدرس داخلی" in t or "میزبان داخلی" in t:
+        return "این آدرس به یک سرویس داخلی اشاره می‌کند و برای امنیت خوانده نمی‌شود. آدرس عمومی مطلب را بفرست."
+
     if "quota" in t or "429" in t or "rate limit" in t or "insufficient" in t:
         return "سهمیهٔ هوش مصنوعی فعلاً تمام شده است. چند دقیقهٔ دیگر دوباره امتحان کن."
 

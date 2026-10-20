@@ -26,6 +26,7 @@ from ..rag.embedder import get_embedder
 from ..rag import vector_store
 from ..rag.rag_engine import RagEngine
 from ..utils.errors import friendly_error
+from ..utils.url_guard import UnsafeURLError, validate_public_url
 
 logger = logging.getLogger(__name__)
 URL_REGEX = re.compile(r'(https?://[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s]*)?)')
@@ -285,6 +286,7 @@ class TelegramBot:
             extractor = self.extractors.get(platform) or self.extractors.get('website')
             
             await processing_msg.edit_text(f"📥 در حال استخراج محتوا از {platform}...")
+            validate_public_url(url)  # گارد SSRF: آدرس داخلی خوانده نمی‌شود
             content = await extractor.extract(url)
             sqlite_store.save_content(content)
             
