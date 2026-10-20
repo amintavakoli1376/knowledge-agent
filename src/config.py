@@ -6,6 +6,7 @@ from typing import Optional
 class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     
     # Notion
     notion_api_key: str = ""
@@ -40,6 +41,8 @@ class Settings(BaseSettings):
     # اگر سقف کم باشد content خالی برمی‌گردد (finish_reason=length).
     # 0 = پارامتر فرستاده نشود (پیش‌فرض روتر).
     openai_max_tokens: int = 16000
+    # توکن احراز هویت وب؛ خالی = همهٔ مسیرها بسته (fail-closed)
+    web_auth_token: str = ""
     
     # Server
     host: str = "0.0.0.0"

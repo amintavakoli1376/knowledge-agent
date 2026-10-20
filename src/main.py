@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
@@ -103,6 +103,10 @@ app = FastAPI(
     description="Multi-source knowledge management agent. Save content from any platform to Notion.",
     version="1.0.0",
     lifespan=lifespan,
+    # Swagger/OpenAPI فقط وقتی سرور محلی است؛ روی IP عمومی نقشهٔ API لو می‌رود
+    docs_url="/docs" if os.getenv("KA_EXPOSE_DOCS") == "1" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if os.getenv("KA_EXPOSE_DOCS") == "1" else None,
 )
 
 # Static assets for the Kaghaz (کاغذ) RTL reader
@@ -118,6 +122,51 @@ from .render.api_views import router as kaghaz_api_router  # noqa: E402
 
 app.include_router(kaghaz_api_router)
 
+
+# ---------------------------------------------------------------- auth (وب)
+from .render import auth as web_auth  # noqa: E402
+
+
+@app.middleware("http")
+async def require_web_auth(request: Request, call_next):
+    """قفل همهٔ مسیرها به‌جز /health و /static و صفحهٔ ورود."""
+    if web_auth.is_public(request.url.path):
+        return await call_next(request)
+    if not web_auth.authorized(request, settings.web_auth_token):
+        return web_auth.unauthorized(request, bool(settings.web_auth_token))
+    return await call_next(request)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(next: str = "/index"):
+    return web_auth.login_page(next)
+
+
+@app.post("/login")
+async def login_submit(request: Request):
+    form = await request.form()
+    token = str(form.get("token", "")).strip()
+    nxt = str(form.get("next", "/index") or "/index")
+    if not web_auth._same(token, settings.web_auth_token):
+        await asyncio.sleep(0.6)  # کند کردن حدس توکن
+        return web_auth.login_page(nxt, "توکن درست نیست.")
+    resp = RedirectResponse(nxt if nxt.startswith("/") else "/index", status_code=303)
+    resp.set_cookie(
+        web_auth.COOKIE_NAME,
+        web_auth._cookie_value(settings.web_auth_token),
+        max_age=web_auth.COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return resp
+
+
+@app.get("/logout")
+async def logout():
+    resp = RedirectResponse("/login", status_code=303)
+    resp.delete_cookie(web_auth.COOKIE_NAME, path="/")
+    return resp
 
 @app.get("/health")
 async def health():
