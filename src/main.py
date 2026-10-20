@@ -5,6 +5,7 @@ for saving content to Notion.
 """
 import asyncio
 import logging
+import os
 import re
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -34,8 +35,11 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-# Enable debug logging for telegram lib so we can SEE received updates
-logging.getLogger("telegram").setLevel(logging.DEBUG)
+# ⚠️ لاگ DEBUG برای کتابخانهٔ تلگرام/httpx توکن ربات را در URL هر درخواست چاپ می‌کند.
+# فقط وقتی لازم است لاگ کامل دید، با TELEGRAM_DEBUG=1 روشن شود.
+_tg_level = logging.DEBUG if os.getenv("TELEGRAM_DEBUG") == "1" else logging.WARNING
+logging.getLogger("telegram").setLevel(_tg_level)
+logging.getLogger("httpx").setLevel(logging.WARNING if _tg_level != logging.DEBUG else logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global instances
