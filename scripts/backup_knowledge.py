@@ -136,15 +136,56 @@ def retention(remote: str, dry: bool) -> list[str]:
     return removed
 
 
+
+def send_telegram(path: Path, n_docs: int, digest: str, env: dict[str, str]) -> bool:
+    """آپلود فایل بکاپ در چت تلگرام خودِ کاربر (off-site بدون کلید جدید)."""
+    import httpx
+
+    token = (
+        os.environ.get("BACKUP_TELEGRAM_TOKEN")
+        or env.get("TELEGRAM_BOT_TOKEN")
+        or os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    )
+    chat_id = (
+        os.environ.get("BACKUP_TELEGRAM_CHAT_ID")
+        or env.get("TELEGRAM_CHAT_ID")
+        or os.environ.get("TELEGRAM_CHAT_ID", "")
+    )
+    if not token or not chat_id:
+        print("✗ TELEGRAM_BOT_TOKEN یا TELEGRAM_CHAT_ID تنظیم نشده")
+        return False
+    caption = (
+        f"🗄 بکاپ knowledge.db\n"
+        f"{n_docs} سند · {path.stat().st_size / 1e6:.2f} MB\n"
+        f"sha256: {digest[:16]}…\n"
+        f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+    )
+    print("۳) ارسال به تلگرام …")
+    with path.open("rb") as f:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendDocument",
+            data={"chat_id": chat_id, "caption": caption},
+            files={"document": (path.name, f, "application/gzip")},
+            timeout=120,
+        )
+    if r.status_code != 200 or not r.json().get("ok"):
+        print(f"✗ ارسال ناموفق: {r.status_code} {r.text[:200]}")
+        return False
+    doc = r.json()["result"].get("document", {})
+    print(f"   ✓ ارسال شد · message_id={r.json()['result']['message_id']} · file_size={doc.get('file_size')}")
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="فقط بساز و آپلود نکن")
     ap.add_argument("--no-verify", action="store_true", help="تست بازیابی انجام نشود")
+    ap.add_argument("--telegram", action="store_true", help="فرستادن فایل بکاپ به چت تلگرام (بدون نیاز به کلید آروان)")
     args = ap.parse_args()
 
     env = load_env()
     missing = [k for k in ("ARVAN_ENDPOINT", "ARVAN_REGION", "ARVAN_ACCESS_KEY", "ARVAN_SECRET_KEY", "ARVAN_BUCKET") if not env.get(k)]
-    if missing and not args.dry_run:
+    if missing and not (args.dry_run or args.telegram):
         print(f"✗ کلیدهای ArvanCloud ناقص است: {', '.join(missing)}")
         print("  در .env اضافه کن: ARVAN_ENDPOINT, ARVAN_REGION, ARVAN_ACCESS_KEY, ARVAN_SECRET_KEY, ARVAN_BUCKET")
         return 2
@@ -179,6 +220,11 @@ def main() -> int:
     if args.dry_run:
         print(f"[dry-run] فایل آماده است: {gz} (آپلود نشد)")
         return 0
+
+    if args.telegram:
+        ok = send_telegram(gz, n_docs, digest, env)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return 0 if ok else 4
 
     remote = rclone_remote(env)
     print("۳) آپلود به ArvanCloud …")
