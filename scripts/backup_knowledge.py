@@ -79,12 +79,34 @@ def doc_count(path: Path) -> int:
         con.close()
 
 
+def _endpoint_host(value: str) -> str:
+    """rclone wants a bare host: `https://s3.…` turns into a request to `https://https/s3.…`."""
+    host = value.strip()
+    for scheme in ("https://", "http://"):
+        if host.startswith(scheme):
+            host = host[len(scheme):]
+    return host.rstrip("/")
+
+
+def _region(env: dict[str, str]) -> str:
+    """Arvan rejects region=default; its regions look like ir-thr-at1 and are
+    visible in the endpoint host (s3.ir-thr-at1.arvanstorage.ir)."""
+    region = (env.get("ARVAN_REGION") or "").strip()
+    if region and region != "default":
+        return region
+    host = _endpoint_host(env["ARVAN_ENDPOINT"])
+    parts = host.split(".")
+    if len(parts) > 2 and parts[0] == "s3":
+        return parts[1]
+    return region or "default"
+
+
 def rclone_remote(env: dict[str, str]) -> str:
     """remote موقت: `:s3,provider=ArvanCloud,...:` — بدون نوشتن rclone.conf"""
     return (
         f":s3,provider=ArvanCloud,access_key_id={env['ARVAN_ACCESS_KEY']},"
         f"secret_access_key={env['ARVAN_SECRET_KEY']},"
-        f"endpoint={env['ARVAN_ENDPOINT']},region={env['ARVAN_REGION']}:"
+        f"endpoint={_endpoint_host(env['ARVAN_ENDPOINT'])},region={_region(env)}:"
         f"{env['ARVAN_BUCKET']}"
     )
 

@@ -73,6 +73,19 @@ knowledge-agent/
 └── .env.example
 ```
 
+## Backup (Arvan S3)
+
+بکاپ روزانهٔ vault در باکت اختصاصی `knowledge-backups` روی آروان ذخیره می‌شود
+(`ARVAN_ENDPOINT` / `ARVAN_ACCESS_KEY` / `ARVAN_SECRET_KEY` / `ARVAN_REGION=ir-thr-at1` / `ARVAN_BUCKET=knowledge-backups`).
+
+```bash
+systemctl start knowledge-backup.service     # اجرای دستی
+systemctl list-timers knowledge-backup.timer # زمان‌بندی: هر روز ۰۳:۱۵ (با catch-up)
+journalctl -u knowledge-backup.service -n 20 # نتیجه
+```
+
+اسکریپت بعد از آپلود، فایل را دوباره دانلود و بازیابی می‌کند (تعداد اسناد را گزارش می‌دهد) و بعد retention را روی همان باکت اعمال می‌کند.
+
 ## API Endpoints
 
 | Method | Path | Description |
