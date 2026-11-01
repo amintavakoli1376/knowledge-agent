@@ -475,7 +475,7 @@ class LinkedInExtractor(BaseExtractor):
 
     def _author_from_url(self, url: str) -> str:
         """Fallback: extract handle from /posts/<handle>_<slug> URL."""
-        m = re.search(r'/posts/([A-Za-z0-9_-]+)_', url)
+        m = re.search(r'/posts/([A-Za-z0-9-]+?)_', url)
         return (m.group(1) or "") if m else ""
 
     def _extract_text_from_url(self, url: str) -> Optional[str]:
