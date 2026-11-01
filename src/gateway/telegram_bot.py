@@ -311,14 +311,14 @@ class TelegramBot:
             
         except ExtractionError as e:
             logger.error(f"Extraction failed for {e.url}: {e}")
-            is_li_group = "linkedin" in (e.url or "") and "groupPost" in (e.url or "")
-            if is_li_group:
-                # پست گروهی لینکدین برای کاربر ناشناس 404 است — راه واقعی، متن خود پست است
+            is_linkedin = "linkedin.com" in (e.url or "").lower()
+            if is_linkedin:
+                # پست‌های لینکدین پشت لاگین، گروهی یا دسترسی محدود (Signup blocking page)
                 await processing_msg.edit_text(
-                    "❌ **این پست داخل یک گروه لینکدین است**\n\n"
-                    "لینکدین محتوای پست‌های گروهی را بدون عضویت و ورود نشان نمی‌دهد، "
-                    "پس ربات نمی‌تواند خودش متن را بخواند.\n\n"
-                    "راه‌حل: متن پست را همین‌جا بفرستید تا خلاصه و ذخیره شود.",
+                    "❌ **این پست لینکدین نیازمند ورود به حساب است**\n\n"
+                    "این محتوا عمومی نیست (پست گروهی، محدود به کانکشن‌ها یا پشت دیوار ورود لینکدین است). "
+                    "ربات و اسکرپرها بدون لاگین به حساب شما به متن دسترسی ندارند.\n\n"
+                    "💡 **راه‌حل:** متن پست را در لینکدین کپی کرده و مستقیماً همین‌جا بفرستید تا خلاصه و در Notion ذخیره شود.",
                     reply_markup=InlineKeyboardMarkup(
                         [[InlineKeyboardButton("✍️ متن پست را می‌فرستم", callback_data="mode:save")]]
                     ),

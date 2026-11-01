@@ -295,14 +295,14 @@ class LinkedInExtractor(BaseExtractor):
     
     async def _extract_from_embed(self, url: str) -> Optional[str]:
         """Extract post content from LinkedIn's public embed endpoint."""
-        # Extract activity/share ID from URL
-        m = re.search(r'(?:activity|share)-(\d+)', url)
+        # Extract activity/share ID from URL (supports both hyphen and colon separators, plus ugcPost)
+        m = re.search(r'(?:activity|share|ugcPost)[:\-](\d+)', url)
         if not m:
             return None
         post_id = m.group(1)
         
-        # Try activity URN first, then share URN
-        for urn_type in ('activity', 'share'):
+        # Try activity URN first, then share URN, then ugcPost
+        for urn_type in ('activity', 'share', 'ugcPost'):
             embed_url = f"https://www.linkedin.com/embed/feed/update/urn:li:{urn_type}:{post_id}"
             try:
                 async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:

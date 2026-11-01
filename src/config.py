@@ -52,9 +52,17 @@ class Settings(BaseSettings):
     # Local data (SQLite stores)
     data_dir: str = "/root/knowledge-agent-repo/data"
     
+    # Arvan S3 Backups
+    arvan_endpoint: str = ""
+    arvan_access_key: str = ""
+    arvan_secret_key: str = ""
+    arvan_region: str = ""
+    arvan_bucket: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()
