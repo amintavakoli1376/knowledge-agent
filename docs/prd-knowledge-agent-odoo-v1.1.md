@@ -93,6 +93,18 @@ Extract → sqlite_store.save_content()
 - **`body` اگر خالی بماند** به‌طور پیش‌فرض `<h1>{name}</h1>` می‌شود؛ و `icon` نوع char است (نه selection).
 - کلید موقت برای `admin` (uid 2) در `/root/odoo/.ka_api_key` (chmod 600، انقضا ۹۰ روز، scope `rpc`) قرار گرفت و در T3 با کلید کاربر سرویس جایگزین می‌شود.
 
+### تکمیل Discovery — Task 3 (۲۰۲۶-۱۱-۰۴) — کاربر سرویس و عضویت Workspace
+
+سند کامل: `docs/task-3-service-user-and-workspace-membership.md`. نتیجه‌ها با تست زنده روی همین instance:
+
+- **هویت‌ها ساخته و تثبیت شدند:** کاربر سرویس `knowledge-agent@local` (id 5، فقط `base.group_user`) · Workspace **«Knowledge Agent»** با `id=37` (ریشه، `internal_permission='none'`) · عضو write برای سرویس · کلید API سرویس (id 2، انقضا ۲۰۲۷-۰۲-۰۲) در `/root/odoo/.ka_service_key`. کلید موقت ادمین **revoke شد** و `401` گرفتنش تأیید شد.
+- **`NFR-002` با عدد اثبات شد:** کاربر داخلی غیرعضو برای Workspace و مقالهٔ فرزند **`[]`** گرفت در حالی که ادمین همان‌ها را می‌دید؛ پس از افزودن عضویت `read` توسط ادمین، هر دو دیده شدند.
+- **دسترسی‌ها (ACL واقعی):** `base.group_user` روی `knowledge.article` = read/write/create و **unlink=0** → سرویس می‌سازد ولی پاک نمی‌کند (`create` → 200، `unlink` → 403). روی `knowledge.article.member` کاربر عادی **فقط خواندنی** است → **تنظیم عضویت‌ها کار ادمین است**، نه آینه.
+- **تلهٔ مهم Properties:** `article_properties` تعریفش را از **والد** می‌گیرد (`definition="parent_id.article_properties_definition"`)؛ نوشتن مقدار بدون اسکیما روی والد **بی‌صدا دور ریخته می‌شود**. پس از تعریف اسکیما روی Workspace 37، مقدار `source_url`/`tags`/`source_date`/`platform` ماند و **فیلتر روی `article_properties.source_url` هم کار کرد** → یک مسیر دوم (نه جایگزین) برای Dedup.
+- **تله‌های دیگر:** هر کاربر جدید خودکار یک مقالهٔ «Welcome \<name\>» invite-only می‌گیرد (آینه فقط زیر Workspace 37 بشمارد)؛ حذف آخرین عضو write خطا می‌دهد مگر context `knowledge_member_skip_writable_check=True`؛ `is_article_item=True` بدون والد ممنوع، و ریشه باید `internal_permission` داشته باشد.
+- **حالت پایانی تمیز:** ۳۴ مقاله (۳۲ اصلی + Workspace + مقالهٔ خودکار سرویس)، ۳ عضو، ۲ کاربر، **۱ کلید** (فقط سرویس). همهٔ probeها حذف شدند.
+- **برای پیاده‌سازی:** `ODOO_WORKSPACE_ROOT_ID=37` و `ODOO_API_KEY` از فایل کلید سرویس؛ اسکیما یک‌بار روی Workspace تعریف شود.
+
 ---
 
 ## ۱. خلاصهٔ اجرایی
@@ -392,7 +404,7 @@ ODOO_RETRY_BACKOFF_BASE=2
 ODOO_RATE_LIMIT_PER_SEC=5
 
 # شناسه مقالات والد (Root structure)
-ODOO_WORKSPACE_ROOT_ID=              # شناسه مقالهٔ ریشهٔ Workspace "Knowledge Agent"
+ODOO_WORKSPACE_ROOT_ID=37            # تأییدشده در T3: مقالهٔ ریشهٔ Workspace "Knowledge Agent" (knowledge.article id=37)
 ODOO_PARENT_ARXIV_ID=
 ODOO_PARENT_YOUTUBE_ID=
 ODOO_PARENT_WEBSITE_ID=
