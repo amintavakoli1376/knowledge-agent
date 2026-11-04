@@ -80,6 +80,19 @@ Extract → sqlite_store.save_content()
 6. **وضعیت زندهٔ امروز:** `/health` مقدار `notion:false` می‌دهد و Outline فعال نیست — یعنی SQLite امروز تنها مقصد زنده است. مسیر ذخیرهٔ Odoo باید در همین شرایط (هیچ آینهٔ فعالی) هم کامل سالم بماند.
 7. **گیت فعال‌سازی باید `ODOO_ENABLED` باشد** و کلیدهای جدید (`odoo_url`, `odoo_db`, `odoo_api_key`, `odoo_enabled`) با مقدار پیش‌فرض به `src/config.py` اضافه شوند؛ `extra="ignore"` است پس افزودن‌شان boot را نمی‌شکند.
 
+### تکمیل Discovery — Task 2 (۲۰۲۶-۱۱-۰۴) — شِیپ واقعی JSON-2
+
+کلید API روی همین instance ساخته و همهٔ فراخوانی‌ها با کد HTTP واقعی تست شدند. سند کامل: `docs/task-2-odoo-json2-api-key.md`.
+
+- **`create` فقط `vals_list` می‌پذیرد:** `{"vals": …}` → **422** `missing a required argument: 'vals_list'`؛ شکل درست `{"vals_list": [{…}]}` → **200** `[id]`. (این نکته در هیچ‌جای PRD قبلی نبود.)
+- **shape نهایی:** `search_read {domain, fields, limit, order}` · `search_count {domain}` · `read {ids, fields}` · `write {ids, vals}` · `unlink {ids}` — همه با `POST /json/2/<model>/<method>` و هدر `Authorization: bearer <key>`.
+- **خطاهای احراز هویت تفکیک‌پذیرند:** بدون کلید → 401 `User not authenticated…`؛ کلید غلط → 401 `Invalid apikey`.
+- **`NFR-002` تجربی اثبات شد:** `create` با `internal_permission='none'` و بدون عضو → **422** `needs at least one member with 'Write' access`. راه‌حل یک‌تماسی تأییدشده: `article_member_ids: [[0,0,{"partner_id": P, "permission": "write"}]]` در همان `create` (تست شد: 200 و ثبت عضو، و بعد از `unlink` هیچ زباله‌ای نماند).
+- **`article_url` واقعاً `store=False, readonly=True` است** (از `fields_get`): خوانده می‌شود ولی فیلتر نمی‌شود → تأیید قطعی اینکه Dedup از آن ممکن نیست.
+- **`read` روی id ناموجود** ردیفی از `false`ها برمی‌گرداند، نه لیست خالی → کلاینت باید مقدار `id` را چک کند.
+- **`body` اگر خالی بماند** به‌طور پیش‌فرض `<h1>{name}</h1>` می‌شود؛ و `icon` نوع char است (نه selection).
+- کلید موقت برای `admin` (uid 2) در `/root/odoo/.ka_api_key` (chmod 600، انقضا ۹۰ روز، scope `rpc`) قرار گرفت و در T3 با کلید کاربر سرویس جایگزین می‌شود.
+
 ---
 
 ## ۱. خلاصهٔ اجرایی
