@@ -42,7 +42,7 @@
 | `src/render/` | UI وب موجود پروژه |
 | `data/knowledge.db` | **منبع حقیقت (Source of Truth)** — SQLite با جداول `content` (ستون `url` با قید `UNIQUE`)، `doc_versions`، `embeddings` (بردار float32 با ۳۸۴ بعد از مدل e5-small)، `concepts` (`norm`, `display`, `doc_count`, `doc_ids`) |
 | `docs/adr/` | پوشهٔ Architecture Decision Records، از قبل موجود در ریپو |
-| `requirements.txt` | شامل `lxml` و `markdown-it-py`؛ **`bleach` موجود نیست** و باید در صورت نیاز اضافه شود |
+| `requirements.txt` | شامل `lxml` و `markdown-it-py`؛ **`bleach` نه اعلام شده و نه هیچ‌جا import می‌شود — برای این پروژه لازم نیست** (تبدیل Markdown→HTML با `markdown-it-py` انجام می‌شود). شکاف واقعی وابستگی‌ها: `playwright`، `youtube_transcript_api` و `socketio` در کد import می‌شوند ولی اعلام/نصب نشده‌اند (تفصیل در تکمیل Discovery پایان همین بخش) |
 
 ### جریان واقعی فعلی (`src/main.py`)
 
@@ -66,6 +66,19 @@ Extract → sqlite_store.save_content()
 - مسیر قدیمی `/jsonrpc` نیز پاسخ می‌دهد اما **deprecated** است؛ هدف توسعه باید منحصراً JSON-2 باشد.
 - بررسی مستقیم `ir_model_fields` روی مدل `knowledge.article` فیلدهای واقعی را تأیید کرده (بخش ۷).
 - هیچ فیلد `x_*` سفارشی روی مدل تعریف نشده است.
+
+### تکمیل Discovery — Task 1 (۲۰۲۶-۱۱-۰۴)
+
+بررسی کاملِ کد بی‌واسطه (مدل‌ها، دو آینهٔ موجود، پیکربندی، وابستگی‌ها) روی همین نسخهٔ ریپو انجام شد.
+سند کامل: `docs/task-1-repo-discovery.md`. یافته‌های تازه‌ای که این PRD را اصلاح می‌کنند:
+
+1. **`SaveResponse` نیازمند `odoo_url` است.** کلاس فعلی در `src/models/__init__.py` فقط `notion_url` / `outline_url` / `affine_url` را برمی‌گرداند؛ بدون افزودن `odoo_url`، لینک آینهٔ جدید به کاربر/API نمی‌رسد. `affine_url` کلید مرده است.
+2. **`SetupRequest` / `SetupResponse` کلاس‌های مرده‌اند** (بدون هیچ مصرف‌کننده — `POST /api/setup` حذف شده است) و باید بازنشسته شوند.
+3. **۵ نقطهٔ تماس** باید آینهٔ Odoo را صدا بزنند، نه یکی: `main.py` (۱ نقطه) + `telegram_bot.py` (۴ نقطه شامل شاخهٔ لینک تکراری). هر نقطه با گیت `*_ENABLED` و `try/except` غیرمخرب — هم‌الگوی دقیق `_save_outline`.
+4. **الگوی نهایی آینه: `storage/outline.py`** (sync + `asyncio.to_thread` + گیت فعال‌سازی + بدنهٔ ساخته‌شده از `content+analysis`)، نه `notion.py` (async httpx بدون گیت).
+5. **`bleach` لازم نیست** (نه اعلام شده، نه import می‌شود). شکاف واقعی وابستگی: `socketio` (top-level و unguarded در `storage/affine.py`) و `playwright` / `youtube_transcript_api` (هر دو داخل `try/except ImportError`). برای آینهٔ Odoo هیچ وابستگی جدیدی لازم نیست.
+6. **وضعیت زندهٔ امروز:** `/health` مقدار `notion:false` می‌دهد و Outline فعال نیست — یعنی SQLite امروز تنها مقصد زنده است. مسیر ذخیرهٔ Odoo باید در همین شرایط (هیچ آینهٔ فعالی) هم کامل سالم بماند.
+7. **گیت فعال‌سازی باید `ODOO_ENABLED` باشد** و کلیدهای جدید (`odoo_url`, `odoo_db`, `odoo_api_key`, `odoo_enabled`) با مقدار پیش‌فرض به `src/config.py` اضافه شوند؛ `extra="ignore"` است پس افزودن‌شان boot را نمی‌شکند.
 
 ---
 
