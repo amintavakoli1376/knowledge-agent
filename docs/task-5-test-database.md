@@ -81,7 +81,7 @@
 docker exec odoo-db createdb -U odoo -E UTF8 -T template0 ka_test
 
 # 2) نصب ماژول‌ها (بدون demo)
-docker exec odoo-app odoo -d ka_test -i base,knowledge --without-demo=all --stop-after-init
+docker exec odoo-app odoo -d ka_test -i base,knowledge --without-demo --stop-after-init
 
 # 3) کاربر سرویس + Workspace + کلید (اسکریپت T5)
 #    خروجی: WORKSPACE_ID=<id> و KEY=<کلید>
@@ -106,3 +106,6 @@ curl -s -X POST http://127.0.0.1:8069/json/2/knowledge.article/search_read \
 3. **`name` روی `knowledge.article` در این نسخهٔ نصب‌شده `varchar` است، نه `jsonb`** — کوئری
    `name->>'en_US'` خطای «operator does not exist» می‌دهد. برای خواندن مستقیم از psql، از
    `left(name,40)` استفاده کنید.
+4. **`--without-demo=all` در Odoo 19 منسوخ است**: لاگ می‌گوید `invalid boolean value: 'all',
+   assume True`. یعنی مقدار `all` پذیرفته نمی‌شود و فقط `--without-demo` (بدون مقدار) درست است.
+   در دستور بازتولید همین شکل اصلاح شد.
