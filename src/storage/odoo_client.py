@@ -7,14 +7,14 @@ existing Outline storage backend.
 from __future__ import annotations
 
 import json
-import logging
 import ssl
 import urllib.error
 import urllib.request
 
 from ..config import settings
+from .logging_util import get_structured_logger
 
-logger = logging.getLogger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class OdooError(Exception):

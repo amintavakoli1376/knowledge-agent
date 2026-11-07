@@ -7,7 +7,6 @@ SQLite mirror registry, and a get-or-create parent per platform.
 """
 from __future__ import annotations
 
-import logging
 import sqlite3
 from pathlib import Path
 
@@ -15,9 +14,10 @@ from ..config import settings
 from ..models import AIAnalysis, ExtractedContent
 from .db import connect_db
 from .dlq import DLQ
+from .logging_util import get_structured_logger
 from .odoo_client import OdooClient
 
-logger = logging.getLogger(__name__)
+logger = get_structured_logger(__name__)
 
 
 class OdooStorage:
