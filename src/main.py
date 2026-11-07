@@ -285,10 +285,21 @@ async def api_save(request: SaveRequest):
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Outline save failed (non-fatal): {e}")
 
+        # Step 3.6: Mirror to Odoo (best-effort — never breaks the flow)
+        odoo_url = None
+        if getattr(settings, "odoo_enabled", False):
+            from .storage.odoo import OdooStorage
+            try:
+                logger.info("Saving to Odoo (parallel)...")
+                odoo_url = await asyncio.to_thread(OdooStorage().save, content, analysis)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Odoo save failed (non-fatal): {e}")
+
         return SaveResponse(
             success=True,
             notion_url=notion_url,
             outline_url=outline_url,
+            odoo_url=odoo_url,
             title=content.title[:100],
             platform=platform,
             category=analysis.category,
