@@ -113,3 +113,37 @@ def test_api_key_never_in_error_message(monkeypatch):
         assert "sk-test" not in str(e)
     else:
         pytest.fail("expected AuthError")
+
+
+# ---------------- Task A3: retryable classification + JSON-RPC error extraction ----
+
+from src.storage.odoo_client import _extract_error, _is_retryable
+
+
+def test_is_retryable_429_5xx_timeout():
+    assert _is_retryable(RateLimitError()) is True
+    assert _is_retryable(
+        urllib.error.HTTPError("u", 502, "bad gateway", {}, b"")
+    ) is True
+    assert _is_retryable(TimeoutError()) is True
+    assert _is_retryable(urllib.error.URLError("dns")) is True
+
+
+def test_is_retryable_4xx_auth_false():
+    assert _is_retryable(
+        urllib.error.HTTPError("u", 400, "bad", {}, b"")
+    ) is False
+    assert _is_retryable(AuthError()) is False
+    assert _is_retryable(ValueError()) is False
+
+
+def test_extract_error_jsonrpc_message():
+    body = json.dumps({
+        "jsonrpc": "2.0", "id": 1,
+        "error": {"code": 200, "message": "Record not found"},
+    }).encode()
+    assert _extract_error(body) == "Record not found"
+
+
+def test_extract_error_fallback_to_text():
+    assert _extract_error(b"plain error text") == "plain error text"
