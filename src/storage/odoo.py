@@ -14,6 +14,7 @@ from pathlib import Path
 from ..config import settings
 from ..models import AIAnalysis, ExtractedContent
 from .db import connect_db
+from .dlq import DLQ
 from .odoo_client import OdooClient
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,12 @@ logger = logging.getLogger(__name__)
 class OdooStorage:
     """Writes knowledge items into Odoo's knowledge.article model."""
 
-    def __init__(self, client=None, cfg=settings, data_dir=None) -> None:
+    def __init__(self, client=None, cfg=settings, data_dir=None, dlq=None) -> None:
         self._cfg = cfg
         self._client = client or OdooClient(cfg)
         base = Path(data_dir) if data_dir else Path(cfg.data_dir)
         self._mirror_db = base / "odoo_articles.sqlite3"
+        self._dlq = dlq if dlq is not None else DLQ(base)
 
     # -- internals -------------------------------------------------------
 
@@ -115,16 +117,21 @@ class OdooStorage:
         if mirror:
             return self._article_url(mirror[0])
 
-        parent_id = self._get_or_create_parent(content.platform or "website")
-        vals = {
-            "name": (content.title or "Untitled")[:255],
-            "body": self._markdown(content, analysis),
-            "article_url": url,
-            "parent_id": parent_id,
-        }
-        odoo_id = int(
-            self._client.execute_kw("knowledge.article", "create", [vals])
-        )
+        try:
+            parent_id = self._get_or_create_parent(content.platform or "website")
+            vals = {
+                "name": (content.title or "Untitled")[:255],
+                "body": self._markdown(content, analysis),
+                "article_url": url,
+                "parent_id": parent_id,
+            }
+            odoo_id = int(
+                self._client.execute_kw("knowledge.article", "create", [vals])
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Odoo write failed; enqueueing DLQ: %s", exc)
+            self._dlq.enqueue(url, {"source_url": url}, str(exc))
+            return None
         self._register_mirror(url, odoo_id, "knowledge.article", content.title)
         logger.info("Odoo article created id=%s url=%s", odoo_id, url)
         return self._article_url(odoo_id)

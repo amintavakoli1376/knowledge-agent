@@ -151,3 +151,53 @@ def test_extract_error_jsonrpc_message():
 
 def test_extract_error_fallback_to_text():
     assert _extract_error(b"plain error text") == "plain error text"
+
+
+# ---------------- Task C1: exponential backoff retry ----------------------
+
+def test_with_retry_retries_on_retryable_then_succeeds(monkeypatch):
+    from src.storage.odoo_client import OdooClient, _with_retry
+
+    client = OdooClient(_settings(monkeypatch))
+    attempts = {"n": 0}
+
+    def flaky(*a, **k):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    out = _with_retry(flaky, max_attempts=4, base_delay=0.001)
+    assert out == "ok"
+    assert attempts["n"] == 3
+
+
+def test_with_retry_gives_up_after_max_attempts(monkeypatch):
+    from src.storage.odoo_client import OdooClient, _with_retry
+
+    client = OdooClient(_settings(monkeypatch))
+    attempts = {"n": 0}
+
+    def always_fails(*a, **k):
+        attempts["n"] += 1
+        raise RateLimitError("429")
+
+    with pytest.raises(RateLimitError):
+        _with_retry(always_fails, max_attempts=3, base_delay=0.001)
+    assert attempts["n"] == 3
+
+
+def test_with_retry_does_not_retry_non_retryable(monkeypatch):
+    from src.storage.odoo_client import OdooClient, _with_retry
+
+    client = OdooClient(_settings(monkeypatch))
+    attempts = {"n": 0}
+
+    def auth_fails(*a, **k):
+        attempts["n"] += 1
+        raise AuthError("401")
+
+    with pytest.raises(AuthError):
+        _with_retry(auth_fails, max_attempts=3, base_delay=0.001)
+    assert attempts["n"] == 1
+

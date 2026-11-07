@@ -40,6 +40,30 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
+def _with_retry(fn, max_attempts: int = 4, base_delay: float = 1.0):
+    """Call ``fn`` with exponential backoff on retryable errors.
+
+    Base delay doubles each attempt (with a little jitter). Non-retryable
+    errors propagate immediately.
+    """
+    import random
+    import time
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            if not _is_retryable(exc) or attempt >= max_attempts:
+                raise
+            delay = base_delay * (2 ** (attempt - 1)) + random.uniform(0, 0.25)
+            logger.warning(
+                "retry %s/%s after %s: %s", attempt, max_attempts, round(delay, 2), exc
+            )
+            time.sleep(delay)
+
+
 def _extract_error(resp: bytes) -> str:
     """Pull the JSON-RPC error message without echoing any secret."""
     try:
