@@ -1,5 +1,6 @@
 """Knowledge Agent - Configuration."""
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import Optional
 
 
@@ -30,6 +31,12 @@ class Settings(BaseSettings):
     outline_collection_id: str = ""
     outline_index_doc_id: str = ""
     
+    # Odoo 19 (JSON-RPC 2.0 mirror) — Epic 2
+    odoo_enabled: bool = False
+    odoo_url: str = ""
+    odoo_db: str = ""
+    odoo_api_key: str = ""
+
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""
     
@@ -63,6 +70,24 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"
+
+    @model_validator(mode="after")
+    def _check_odoo_required(self):
+        if self.odoo_enabled:
+            missing = [
+                name
+                for name, val in (
+                    ("odoo_url", self.odoo_url),
+                    ("odoo_db", self.odoo_db),
+                    ("odoo_api_key", self.odoo_api_key),
+                )
+                if not val
+            ]
+            if missing:
+                raise ValueError(
+                    "ODOO_ENABLED=true requires: " + ", ".join(missing)
+                )
+        return self
 
 
 settings = Settings()
