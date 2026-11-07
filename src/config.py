@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     odoo_url: str = ""
     odoo_db: str = ""
     odoo_api_key: str = ""
+    odoo_uid: int = 0
 
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""
@@ -80,6 +81,7 @@ class Settings(BaseSettings):
                     ("odoo_url", self.odoo_url),
                     ("odoo_db", self.odoo_db),
                     ("odoo_api_key", self.odoo_api_key),
+                    ("odoo_uid", self.odoo_uid),
                 )
                 if not val
             ]

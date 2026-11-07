@@ -14,6 +14,7 @@ def _settings(monkeypatch, **over):
         "ODOO_URL": "https://odoo.example.com",
         "ODOO_DB": "knowledge",
         "ODOO_API_KEY": "sk-test",
+        "ODOO_UID": "6",
     }
     defaults.update(over)
     for k, v in defaults.items():
@@ -67,9 +68,12 @@ def test_execute_kw_returns_result(monkeypatch):
     params = body["params"]
     assert params["service"] == "object"
     assert params["method"] == "execute_kw"
-    assert params["args"][0] == "knowledge"
-    assert params["args"][1] == "res.partner"
-    assert params["args"][2] == "search_count"
+    assert params["args"][0] == "knowledge"      # db
+    assert params["args"][1] == 6               # uid
+    assert params["args"][2] == "sk-test"       # password (api key)
+    assert params["args"][3] == "res.partner"   # model
+    assert params["args"][4] == "search_count"  # method
+    assert params["args"][5] == [[]]            # args
     # هدر X-Odoo-Database + API key (urllib نام هدر را lowercase می‌کند)
     hdrs = {k.lower(): v for k, v in fake.last_request.headers.items()}
     assert hdrs.get("x-odoo-database") == "knowledge"

@@ -75,7 +75,11 @@ class OdooClient:
         args: list | None = None,
         kwargs: dict | None = None,
     ) -> object:
-        """Run ``execute_kw`` on the model. JSON-2 (1-arg) form."""
+        """Run ``execute_kw`` on the model (Odoo shell-standard 7-arg form).
+
+        Args: [db, uid, password, model, method, args, kwargs]. We authenticate
+        with ``odoo_uid`` + ``odoo_api_key`` (the service-user password).
+        """
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -85,6 +89,8 @@ class OdooClient:
                 "method": "execute_kw",
                 "args": [
                     self._cfg.odoo_db,
+                    self._cfg.odoo_uid,
+                    self._cfg.odoo_api_key,
                     model,
                     method,
                     args if args is not None else [],
