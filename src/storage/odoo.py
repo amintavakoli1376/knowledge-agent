@@ -7,8 +7,11 @@ SQLite mirror registry, and a get-or-create parent per platform.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
+
+from markdown_it import MarkdownIt
 
 from ..config import settings
 from ..models import AIAnalysis, ExtractedContent
@@ -18,6 +21,12 @@ from .logging_util import get_structured_logger
 from .odoo_client import OdooClient
 
 logger = get_structured_logger(__name__)
+
+# Markdown → HTML (FR-003): commonmark, HTML خام غیرفعال (امن).
+_MD = MarkdownIt("commonmark", {"html": False})
+
+# کاراکترهای فارسی/عربی برای تشخیص RTL (FR-008).
+_PERSIAN_RE = re.compile(r"[\u0600-\u06ff]")
 
 
 class OdooStorage:
@@ -91,14 +100,40 @@ class OdooStorage:
         base = self._cfg.odoo_url.rstrip("/")
         return f"{base}/web#id={odoo_id}&model=knowledge.article"
 
-    def _markdown(self, content: ExtractedContent, analysis: AIAnalysis) -> str:
+    def _markdown_to_html(
+        self, content: ExtractedContent, analysis: AIAnalysis
+    ) -> str:
+        """Markdown → HTML معتبر (FR-003) با RTL per-paragraph (FR-008).
+
+        « _markdown() قبلی (که فقط رشته markdown خام می‌ساخت) را جایگزین می‌کند.
+        - HTML خام ورودی غیرفعال است (امن، XSS).
+        - هر پاراگراف فارسی `dir="rtl"` می‌گیرد؛ غیرفارسی `dir="ltr"`.
+        """
         title = content.title or "بدون عنوان"
         parts = [f"# {title}", ""]
         summary = analysis.summary_fa or analysis.summary_en or ""
         if summary:
             parts += [summary, ""]
         parts.append(content.full_text or "")
-        return "\n".join(parts)
+        md = "\n".join(parts)
+
+        html = _MD.render(md or "")
+
+        # FR-008: RTL per-paragraph — هر پاراگراف/بلوک را بر اساس حضور
+        # کاراکتر فارسی جهت‌دهی می‌کنیم.
+        # markdown-it پاراگراف‌ها را به‌صورت <p>...</p> (یا <li> و...)
+        # رندر می‌کند؛ برای قطعات بدون تگ، wrap با <div dir=...>.
+        def _dir(block: str) -> str:
+            return "rtl" if _PERSIAN_RE.search(block) else "ltr"
+
+        # فقط بلوک‌های متن (بدون تگ ساختاری) را جهت‌دهی کن.
+        # ساده‌ترین و امن‌ترین رویکرد: هر <p> را دوباره با dir wrap کن.
+        def _wrap_p(m: re.Match) -> str:
+            inner = m.group(1)
+            return f'<p dir="{_dir(inner)}">{inner}</p>'
+
+        html = re.sub(r"<p>(.*?)</p>", _wrap_p, html, flags=re.S)
+        return html
 
     # -- public ----------------------------------------------------------
 
@@ -121,7 +156,7 @@ class OdooStorage:
             parent_id = self._get_or_create_parent(content.platform or "website")
             vals = {
                 "name": (content.title or "Untitled")[:255],
-                "body": self._markdown(content, analysis),
+                "body": self._markdown_to_html(content, analysis),
                 "article_url": url,
                 "parent_id": parent_id,
             }
