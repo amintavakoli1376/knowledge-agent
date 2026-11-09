@@ -107,13 +107,28 @@ def test_pg_full_texts():
 
 
 @pytest.mark.skipif(not settings.pg_enabled, reason="PG_ENABLED=false")
-def test_pg_graph_expand_resolves_positive_ids():
-    from src.storage.db_pg import pg_graph_expand
+def test_pg_graph_expand_uses_kg_edges():
+    from src.storage.db_pg import pg_kg_build, pg_graph_expand
 
-    expanded = pg_graph_expand([56], ["https://example.com/56"])
+    pg_kg_build()
+    with connect_pg() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT n.key FROM ka.kg_nodes n
+                JOIN ka.kg_edges e ON e.src_id = n.id OR e.dst_id = n.id
+                WHERE n.type='document' AND e.rel='RELATES_TO'
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+    if row is None:
+        pytest.skip("no graph edges yet")
+    winner = int(row["key"][4:])
+    expanded = pg_graph_expand([winner], ["https://example.com/x"])
     assert isinstance(expanded, list)
-    # باید سند هم‌مفهوم (غیر از برنده) برگرداند؛ ممکن است خالی باشد اگر مفهومی نباشد
-    assert all(x != 56 for x in expanded)
+    assert winner not in expanded
+    assert len(expanded) >= 1  # سند هم‌مفهوم از طریق kg_edges پیدا شد
 
 
 @pytest.mark.skipif(not settings.pg_enabled, reason="PG_ENABLED=false")
