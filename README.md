@@ -39,6 +39,49 @@ uvicorn src.main:app --reload --port 8080
 | `HOST` | ❌ | Server host (default: 0.0.0.0) |
 | `PORT` | ❌ | Server port (default: 8080) |
 
+## Odoo 19 Mirror (KA → Odoo Knowledge)
+
+The agent can publish saved documents to a self-hosted **Odoo 19 Enterprise**
+Knowledge base as an optional third mirror (besides Notion / Outline). SQLite
+remains the source of truth; the mirror is **flag-gated and non-fatal** — if
+it is disabled or errors, saving still succeeds.
+
+### Required variables (see `.env.example`)
+
+| Variable | Description |
+|----------|-------------|
+| `ODOO_ENABLED` | Set `true` to enable the mirror (default `false`) |
+| `ODOO_URL` | Base URL of the Odoo instance (e.g. `http://127.0.0.1:8069`) |
+| `ODOO_DB` | Odoo database name (e.g. `production`) |
+| `ODOO_API_KEY` | Service-user API key (rotate via `scripts/rotate_odoo_key.py`) |
+| `ODOO_UID` | Odoo service-user id (KA service user = `5`) |
+| `ODOO_BODY_SIZE_LIMIT` | Optional. Body-size threshold (chars) above which the full body is stored as an `ir.attachment` (default `50000`) |
+
+### Enable
+
+```bash
+# .env
+ODOO_ENABLED=true
+ODOO_URL=http://127.0.0.1:8069
+ODOO_DB=production
+ODOO_API_KEY=<service-user key>
+ODOO_UID=5
+```
+
+Then restart the service:
+
+```bash
+systemctl restart knowledge-agent      # bare systemd deployment
+# or: docker compose up -d --build     # containerized deployment
+```
+
+### Resources
+
+- Mirror client: `src/storage/odoo_client.py`, `src/storage/odoo.py`
+- Key rotation: `scripts/rotate_odoo_key.py` (two-step, no key on stdout/commits)
+- PRD + discovery docs: `docs/prd-knowledge-agent-odoo-v1.1.md`, `docs/task-*.md`
+- Tests: `tests/test_odoo_*.py` (unit), `tests/test_odoo_integration.py` (live, skipped without test env)
+
 ## Project Structure
 
 ```
