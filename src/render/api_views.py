@@ -322,9 +322,10 @@ def _fts_safe_query(q: str) -> str:
 
 @router.get("/search")
 async def api_search(q: str = "", limit: int = Query(20, ge=1, le=50)) -> dict[str, Any]:
-    """U2a — جست‌وجوی ⌘K: FTS5 + اسنیپت هایلایت؛ کوتاه‌تر از ۳ حرف → LIKE.
+    """U2a — جست‌وجوی ⌘K: (PG tsvector | FTS5) + اسنیپت هایلایت.
 
-    مفاهیم منطبق از جدول concepts (LLM-Wiki 1b) هم برمی‌گردد.
+    وقتی `PG_ENABLED=true` از جدول `ka.content` (search_ts) می‌خواند؛ وگرنه
+    از `content_fts` قبلی. مفاهیم منطبق از جدول concepts هم برمی‌گردد.
     """
     q = (q or "").strip()
     if not q:
@@ -332,6 +333,9 @@ async def api_search(q: str = "", limit: int = Query(20, ge=1, le=50)) -> dict[s
 
     # نرمال‌سازی ی/ک عربی → فارسی (متن ذخیره‌شده فارسی استاندارد دارد)
     q_fa = _fix_persian(q)
+
+    if settings.pg_enabled:
+        return _api_search_pg(q, q_fa, limit)
 
     con = _con(_KB_PATH)
     try:
@@ -363,41 +367,120 @@ async def api_search(q: str = "", limit: int = Query(20, ge=1, le=50)) -> dict[s
                 " ORDER BY saved_at DESC LIMIT ?",
                 (like, like, like, limit),
             ).fetchall()
-
-        doc_ids = _registry_doc_ids()
-        items = []
-        for r in rows:
-            d = _doc_row(r, doc_ids)
-            d["snippet"] = _fix_persian(r["snippet"] or "")
-            d["title_hl"] = _fix_persian(r["title_hl"] or d["title"])
-            d["rank"] = r["rank"]
-            items.append(d)
-
-        # مفاهیم منطبق: norm/display حاوی عبارت (جدول concepts از LLM-Wiki 1b)
-        concepts = []
-        like_c = f"%{q_fa.replace(' ', '')}%"  # norm بدون فاصله (ZWNJ join)
-        try:
-            crows = con.execute(
-                "SELECT norm, display, doc_count, doc_ids FROM concepts"
-                " WHERE display LIKE ? OR norm LIKE ? ORDER BY doc_count DESC LIMIT 5",
-                (f"%{q_fa}%", like_c),
-            ).fetchall()
-            for cr in crows:
-                ids = [i.strip() for i in (cr["doc_ids"] or "").split(",") if i.strip()]
-                concepts.append(
-                    {
-                        "norm": cr["norm"],
-                        "display": _fix_persian(cr["display"]),
-                        "doc_count": cr["doc_count"],
-                        "doc_ids": ids,
-                    }
-                )
-        except sqlite3.Error:
-            pass
-
-        return {"query": q, "mode": mode, "total": len(items), "items": items, "concepts": concepts}
     finally:
         con.close()
+    return _search_common(q, rows, mode, q_fa)
+
+
+def _api_search_pg(q: str, q_fa: str, limit: int) -> dict[str, Any]:
+    """PH tsvector search over ka.content (search_ts generated column)."""
+    from psycopg.rows import dict_row
+
+    from src.storage.db_pg import connect_pg
+
+    mode = "tsv"
+    rows: list = []
+    try:
+        with connect_pg() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                # websearch_to_tsquery: نحو آشنای وب (OR ضمنی، -، "…")
+                cur.execute(
+                    """
+                    SELECT c.id, c.url, c.title, c.platform, c.category,
+                           COALESCE(c.tags,'') AS tags, COALESCE(c.summary_fa,'') AS summary_fa,
+                           COALESCE(c.status,'Unread') AS status,
+                           COALESCE(c.saved_at,'') AS saved_at,
+                           COALESCE(c.author,'') AS author, c.full_text,
+                           ts_headline('simple', c.full_text, plainto_tsquery('simple', %s),
+                                        'StartSel=«, StopSel=», MaxWords=16, MinWords=4')
+                             AS snippet,
+                           c.title AS title_hl,
+                           ts_rank(c.search_ts, websearch_to_tsquery('simple', %s)) AS rank
+                    FROM ka.content c
+                    WHERE c.search_ts @@ websearch_to_tsquery('simple', %s)
+                    ORDER BY rank DESC, c.saved_at DESC
+                    LIMIT %s
+                    """,
+                    (q_fa, q_fa, q_fa, limit),
+                )
+                rows = cur.fetchall()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("PG search failed, falling back to LIKE: %s", e)
+        mode = "like_pg"
+        try:
+            with connect_pg() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    like = f"%{q_fa}%"
+                    cur.execute(
+                        """
+                        SELECT id, url, title, platform, category, COALESCE(tags,'') AS tags,
+                               COALESCE(summary_fa,'') AS summary_fa,
+                               COALESCE(status,'Unread') AS status,
+                               COALESCE(saved_at,'') AS saved_at, COALESCE(author,'') AS author,
+                               full_text, '' AS snippet, title AS title_hl, 0 AS rank
+                        FROM ka.content
+                        WHERE title ILIKE %s OR summary_fa ILIKE %s OR full_text ILIKE %s
+                        ORDER BY saved_at DESC LIMIT %s
+                        """,
+                        (like, like, like, limit),
+                    )
+                    rows = cur.fetchall()
+        except Exception as e2:  # noqa: BLE001
+            logger.warning("PG LIKE fallback failed: %s", e2)
+            return {"query": q, "items": [], "concepts": [], "total": 0, "mode": "pg_err"}
+
+    return _search_common(q, rows, mode, q_fa)
+
+
+def _search_common(q: str, rows: list, mode: str, q_fa: str) -> dict[str, Any]:
+    """Build the shared search payload from rows (sqlite3.Row or dict)."""
+    doc_ids = _registry_doc_ids()
+    items = []
+    for r in rows:
+        d = _doc_row(r, doc_ids)
+        d["snippet"] = _fix_persian(d.get("snippet") or "")
+        d["title_hl"] = _fix_persian(d.get("title_hl") or d.get("title") or "")
+        d["rank"] = r["rank"]
+        items.append(d)
+
+    concepts = []
+    like_c = f"%{q_fa.replace(' ', '')}%"
+    try:
+        if settings.pg_enabled:
+            from src.storage.db_pg import connect_pg
+
+            with connect_pg() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT norm, display, doc_count, doc_ids FROM ka.concepts"
+                        " WHERE display ILIKE %s OR norm ILIKE %s ORDER BY doc_count DESC LIMIT 5",
+                        (f"%{q_fa}%", like_c),
+                    )
+                    crows = cur.fetchall()
+        else:
+            con = _con(_KB_PATH)
+            try:
+                crows = con.execute(
+                    "SELECT norm, display, doc_count, doc_ids FROM concepts"
+                    " WHERE display LIKE ? OR norm LIKE ? ORDER BY doc_count DESC LIMIT 5",
+                    (f"%{q_fa}%", like_c),
+                ).fetchall()
+            finally:
+                con.close()
+        for cr in crows:
+            ids = [i.strip() for i in (cr[3] or "").split(",") if i.strip()]
+            concepts.append(
+                {
+                    "norm": cr[0],
+                    "display": _fix_persian(cr[1]),
+                    "doc_count": cr[2],
+                    "doc_ids": ids,
+                }
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {"query": q, "mode": mode, "total": len(items), "items": items, "concepts": concepts}
 
 
 def _content_url_for(doc_id: str) -> str:

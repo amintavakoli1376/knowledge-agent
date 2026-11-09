@@ -17,6 +17,8 @@ from openai import AsyncOpenAI
 
 from ..config import settings
 from ..storage.sqlite_store import _get_connection
+from ..storage.db_pg import connect_pg
+from psycopg.rows import dict_row
 from .embedder import get_embedder
 from . import vector_store
 from ..storage.db import connect_db
@@ -51,6 +53,10 @@ _HASH_TO_URL_MAP = _build_hash_map()
 
 def fts_search(query: str, limit: int = FTS_TOP_K) -> list:
     """BM25-style FTS5 keyword search (hybrid complement)."""
+    if getattr(settings, "pg_enabled", False):
+        from ..storage.db_pg import pg_fts_search
+
+        return pg_fts_search(query, limit=limit)
     # FTS5 needs a query without weird chars; quote multi-word as phrase-ish
     tokens = re.findall(r"[\w\u0600-\u06FF]+", query)
     if not tokens:
@@ -136,10 +142,24 @@ class RagEngine:
         for hit in fts_hits:
             doc_best.setdefault(hit.get("content_id"), hit)
 
-        # سندهای برداری اول (بر اساس امتیاز)، بعد FTS-ای‌های اضافه
+        # --- Rerank ترکیبی (FR-009): امتیاز نهایی = برداری + FTS + گراف ---
+        # هر سند می‌تواند امتیاز vector و/یا FTS داشته باشد. امتیاز نهایی یک
+        # ترکیب وزنی است تا سندی که هم معنایی و هم متنی هست، بالاتر بیاید.
+        fts_score = {h["content_id"]: h.get("score", 0) for h in fts_hits}
+        v_score = {h["content_id"]: h.get("score", 0) for h in vector_hits}
+
+        def _rerank(doc):
+            cid = doc.get("content_id")
+            v = v_score.get(cid, 0)
+            f = fts_score.get(cid, 0)
+            # برداری وزن اصلی؛ FTS یک تقویت (boost). سودهای با هیچ‌کدام صفر نمی‌مانند.
+            return (0.75 * v) + (0.25 * min(f, 1.0)) + (0.05 if f > 0 else 0)
+
+        # سندهای برداری اول (بر اساس امتیاز ترکیبی)، بعد FTS-ای‌های اضافه
         ranked_docs = sorted(
             (h for h in doc_best.values() if h in vector_hits or h.get("score")),
-            key=lambda h: -h.get("score", 0),
+            key=_rerank,
+            reverse=True,
         )
         fts_only = [h for h in fts_hits if h.get("content_id") in doc_best and h not in ranked_docs]
         merged = _dedupe(ranked_docs + fts_only)[:HYBRID_TOP_K]
@@ -169,8 +189,17 @@ class RagEngine:
             body = full_texts.get(cid) or ""
             if not body:
                 continue
-            with _get_connection() as conn:
-                r = conn.execute("SELECT url, title FROM content WHERE id = ?", (cid,)).fetchone()
+            if getattr(settings, "pg_enabled", False):
+                from ..storage.db_pg import pg_get_by_url as _pg_get_by_url
+
+                with connect_pg() as _conn:
+                    with _conn.cursor(row_factory=dict_row) as _cur:
+                        _cur.execute("SELECT url, title FROM ka.content WHERE id=%s", (cid,))
+                        _r = _cur.fetchone()
+                r = dict(_r) if _r else None
+            else:
+                with _get_connection() as conn:
+                    r = conn.execute("SELECT url, title FROM content WHERE id = ?", (cid,)).fetchone()
             if not r:
                 continue
             context_parts.append(
@@ -274,8 +303,15 @@ class RagEngine:
         if cited_plus:
             # سندهای گراف-گسترش‌یافته — عنوانشان از context_parts
             for cid in expanded_ids:
-                with _get_connection() as conn:
-                    r = conn.execute("SELECT url, title FROM content WHERE id = ?", (cid,)).fetchone()
+                if getattr(settings, "pg_enabled", False):
+                    with connect_pg() as _conn:
+                        with _conn.cursor(row_factory=dict_row) as _cur:
+                            _cur.execute("SELECT url, title FROM ka.content WHERE id=%s", (cid,))
+                            _r = _cur.fetchone()
+                    r = dict(_r) if _r else None
+                else:
+                    with _get_connection() as conn:
+                        r = conn.execute("SELECT url, title FROM content WHERE id = ?", (cid,)).fetchone()
                 if r and r["url"]:
                     t = (r["title"] or "منبع").split("\n")[0][:70]
                     cite_lines.append(f"[+] [{t}]({r['url']})")
@@ -294,6 +330,10 @@ class RagEngine:
         """متن کامل سندها (یک کوئری، dict بر اساس id)."""
         if not content_ids:
             return {}
+        if getattr(settings, "pg_enabled", False):
+            from ..storage.db_pg import pg_full_texts
+
+            return pg_full_texts(content_ids)
         marks = ",".join("?" for _ in content_ids)
         conn = _get_connection()
         try:
@@ -312,6 +352,11 @@ class RagEngine:
         مفاهیم از جدول concepts (فاز 1b) — هر دو نوع doc_id (مثبت=content.id،
         منفی=-hash(url)) resolve می‌شود. خروجی: id سندهای جدید (نه خود برنده‌ها).
         """
+        if getattr(settings, "pg_enabled", False):
+            from ..storage.db_pg import pg_graph_expand
+
+            ids = pg_graph_expand(hit_ids, hit_urls)
+            return ids, "ok" if ids else ""
         try:
             from ..storage.concepts import DB_PATH as _CDB
 

@@ -289,10 +289,16 @@ class TelegramBot:
             validate_public_url(url)  # گارد SSRF: آدرس داخلی خوانده نمی‌شود
             content = await extractor.extract(url)
             sqlite_store.save_content(content)
+            from ..storage.pg_mirror import mirror_save
+
+            mirror_save(content)  # Epic 3 dual-write → PG schema ka
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self._analyze_or_pending(content, processing_msg, url)
             sqlite_store.save_analysis(content.url, analysis)
+            from ..storage.pg_mirror import mirror_analysis
+
+            mirror_analysis(content.url, analysis)  # Epic 3 dual-write
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
@@ -351,6 +357,13 @@ class TelegramBot:
             vectors = await asyncio.to_thread(embedder.embed_passages, chunks)  # prefix «passage: » — الزام e5
             
             # پیدا کردن content_id از URL
+            if getattr(settings, "pg_enabled", False):
+                from ..storage.db_pg import pg_get_content_id_by_url, pg_store_chunks
+
+                cid = pg_get_content_id_by_url(content.url)
+                if cid is not None:
+                    pg_store_chunks(cid, chunks, vectors)
+                return
             conn = sqlite_store._get_connection()
             try:
                 row = conn.execute(
@@ -433,10 +446,16 @@ class TelegramBot:
 
             # چک تکراری بر اساس اسم فایل + ذخیره
             sqlite_store.save_content(content)
+            from ..storage.pg_mirror import mirror_save
+
+            mirror_save(content)  # Epic 3 dual-write → PG schema ka
 
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self._analyze_or_pending(content, processing_msg, content.url)
             sqlite_store.save_analysis(content.url, analysis)
+            from ..storage.pg_mirror import mirror_analysis
+
+            mirror_analysis(content.url, analysis)  # Epic 3 dual-write
 
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)
@@ -477,10 +496,16 @@ class TelegramBot:
                 platform=("telegram" if post_url else "note"),
             )
             sqlite_store.save_content(content)
+            from ..storage.pg_mirror import mirror_save
+
+            mirror_save(content)  # Epic 3 dual-write → PG schema ka
             
             await processing_msg.edit_text("🤖 در حال تحلیل با هوش مصنوعی...")
             analysis = await self._analyze_or_pending(content, processing_msg, post_url or 'raw post')
             sqlite_store.save_analysis(content.url, analysis)
+            from ..storage.pg_mirror import mirror_analysis
+
+            mirror_analysis(content.url, analysis)  # Epic 3 dual-write
             
             await processing_msg.edit_text("💾 در حال ذخیره در Notion...")
             notion_url = await self.storage.save(content, analysis)

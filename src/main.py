@@ -248,7 +248,10 @@ async def api_save(request: SaveRequest):
 
         # Step 1.5: Store full text in SQLite (best-effort, for future RAG)
         sqlite_store.save_content(content)
-        logger.info("Full content saved to SQLite")
+        from .storage.pg_mirror import mirror_save
+
+        mirror_save(content)  # Epic 3 dual-write → PG schema ka
+        logger.info("Full content saved to SQLite (+PG mirror)")
         
         # Step 2: Summarize
         logger.info("Analyzing content with AI...")
@@ -264,7 +267,10 @@ async def api_save(request: SaveRequest):
         # Step 2.5: Update SQLite row with AI analysis fields
         # نکته: URL اکسترکتور (content.url) ممکن است نرمال‌شده باشد؛ همان را بده
         sqlite_store.save_analysis(content.url, analysis)
-        logger.info("Analysis saved to SQLite")
+        from .storage.pg_mirror import mirror_analysis
+
+        mirror_analysis(content.url, analysis)  # Epic 3 dual-write
+        logger.info("Analysis saved to SQLite (+PG mirror)")
         # embedding غیرهمزمان — مثل مسیر تلگرام
         try:
             asyncio.create_task(bot._embed_content(content))

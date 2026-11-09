@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.models import AIAnalysis, ExtractedContent
+from src.config import settings
 from src.processors.summarizer import (
     ContentSummarizer,
     QuotaExceededError,
@@ -64,6 +65,9 @@ def tmp_store(monkeypatch, tmp_path):
     """DB موقت برای تست‌های sqlite_store — DB واقعی دست‌نخورده می‌ماند."""
     monkeypatch.setattr(sqlite_store, "DATA_DIR", tmp_path)
     monkeypatch.setattr(sqlite_store, "DB_PATH", tmp_path / "knowledge.db")
+    # Cutover (Epic 3): تست‌های sqlite_store باید ایزوله از PG باشند،
+    # وگرنه get_by_url/count_content به Postgres واقعی می‌روند.
+    monkeypatch.setattr(settings, "pg_enabled", False)
     return sqlite_store
 
 

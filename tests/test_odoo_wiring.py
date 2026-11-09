@@ -43,6 +43,8 @@ def patched_save(monkeypatch):
     monkeypatch.setattr(main, "summarizer", FakeSummarizer())
     monkeypatch.setattr(main, "storage", FakeStorage())
     monkeypatch.setattr(main, "sqlite_store", FakeSqlite())
+    # تست‌های Odoo wiring نباید به Postgres واقعی بنویسند (Epic 3 cutover)
+    monkeypatch.setattr(main.settings, "pg_enabled", False)
 
     class FakeBot:
         @staticmethod

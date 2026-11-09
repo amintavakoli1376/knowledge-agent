@@ -10,6 +10,7 @@ import numpy as np
 from typing import List, Dict, Any
 
 from ..storage.sqlite_store import _get_connection
+from ..config import settings
 from ..rag.embedder import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,11 @@ def store_chunks(content_id: int, chunks: List[str], vectors: List) -> None:
 
 def search(query_vec, limit: int = 5, min_score: float = 0.3) -> List[Dict[str, Any]]:
     """Cosine similarity search over all chunk vectors. Returns top-K with meta."""
+    if getattr(settings, "pg_enabled", False):
+        from ..storage.db_pg import pg_vector_search
+
+        return pg_vector_search(list(query_vec), limit=limit, min_score=min_score)
+
     qv = np.asarray(query_vec, dtype="float32")
 
     conn = _get_connection()

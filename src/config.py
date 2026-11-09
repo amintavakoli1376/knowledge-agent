@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     odoo_api_key: str = ""
     odoo_uid: int = 0
 
+    # Postgres migration target (Epic 3) — schema `ka` on the Odoo PG cluster
+    pg_enabled: bool = False
+    pg_host: str = "127.0.0.1"
+    pg_port: int = 5544
+    pg_user: str = "odoo"
+    pg_password: str = ""
+    pg_db: str = "postgres"
+    pg_schema: str = "ka"
+
     # Bright Data (Web Unlocker for LinkedIn/blocked sites)
     brightdata_key: str = ""
     

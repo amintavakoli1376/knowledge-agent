@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models import ExtractedContent
+from ..config import settings
 from .db import connect_db
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -344,6 +345,10 @@ def save_analysis(url: str, analysis) -> None:
 
 def get_by_url(url: str) -> dict | None:
     """Return stored row (with summary) for a URL, or None if not saved."""
+    if getattr(settings, "pg_enabled", False):
+        from .db_pg import pg_get_by_url
+
+        return pg_get_by_url(url)
     try:
         init_db()
         conn = _get_connection()
@@ -362,6 +367,10 @@ def get_by_url(url: str) -> dict | None:
 
 def count_content() -> int:
     """Number of stored items (for verification/monitoring)."""
+    if getattr(settings, "pg_enabled", False):
+        from .db_pg import pg_count_content
+
+        return pg_count_content()
     try:
         init_db()
         conn = _get_connection()

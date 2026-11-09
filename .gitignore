@@ -32,3 +32,4 @@ models/
 
 # Local test env (contains the test API key)
 .env.test
+.hermes/
