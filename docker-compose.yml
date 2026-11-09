@@ -1,13 +1,33 @@
-version: '3.8'
+# Knowledge Agent — Docker Compose
+#
+# All secrets and configuration are injected from `.env` (env_file). No secret
+# is hardcoded here. ODOO_* variables are read from `.env` too:
+#
+#   ODOO_ENABLED=true            # enable the Odoo 19 mirror
+#   ODOO_URL=http://127.0.0.1:8069
+#   ODOO_DB=production
+#   ODOO_API_KEY=<service-user key>
+#   ODOO_UID=5                  # KA service-user id
+#   ODOO_BODY_SIZE_LIMIT=50000  # optional; body size threshold for ir.attachment
+#
+# Compose v2 — no deprecated top-level `version:` key.
 
 services:
   knowledge-agent:
     build: .
+    container_name: knowledge-agent
     ports:
       - "8080:8080"
     env_file:
       - .env
-    restart: unless-stopped
     environment:
       - HOST=0.0.0.0
       - PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
