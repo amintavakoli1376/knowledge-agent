@@ -28,6 +28,20 @@ _MD = MarkdownIt("commonmark", {"html": False})
 # کاراکترهای فارسی/عربی برای تشخیص RTL (FR-008).
 _PERSIAN_RE = re.compile(r"[\u0600-\u06ff]")
 
+# نگاشت platform → icon (FR-015): طبق جدول بخش ۷ PRD.
+PLATFORM_ICON = {
+    "arxiv": "📄",
+    "youtube": "▶️",
+    "website": "🌐",
+    "instagram": "📷",
+    "linkedin": "💼",
+    "telegram": "✈️",
+    "twitter": "🐦",
+    "pdf": "📄",
+    "note": "📝",
+}
+DEFAULT_ICON = "📄"
+
 
 class OdooStorage:
     """Writes knowledge items into Odoo's knowledge.article model."""
@@ -159,6 +173,7 @@ class OdooStorage:
                 "body": self._markdown_to_html(content, analysis),
                 "article_url": url,
                 "parent_id": parent_id,
+                "icon": PLATFORM_ICON.get(content.platform, DEFAULT_ICON),
             }
             odoo_id = int(
                 self._client.execute_kw("knowledge.article", "create", [vals])

@@ -7,10 +7,10 @@ from src.models import AIAnalysis, ExtractedContent
 from src.storage.odoo import OdooStorage
 
 
-def _content(full_text="Body text here", title="Sample Article", platform="website"):
+def _content(full_text="Body text here", title="Sample Article", platform="website", url="https://example.com/a"):
     return ExtractedContent(
         title=title,
-        url="https://example.com/a",
+        url=url,
         full_text=full_text,
         platform=platform,
         published_date="2026-11-01",
@@ -79,3 +79,42 @@ def test_rtl_per_paragraph_latin():
     )
     # پاراگراف انگلیسی باید dir="ltr" داشته باشد
     assert 'dir="ltr"' in html
+
+
+def test_save_sets_icon_from_platform(tmp_path):
+    from src.config import Settings
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+            self.next_id = 100
+
+        def execute_kw(self, model, method, args, kwargs=None):
+            self.calls.append((model, method, args))
+            if method == "search_read" and args and args[0] and args[0][0]:
+                return [{"id": 5}] if args[0][0][1] == "=" else []
+            if method == "create":
+                new_id = self.next_id
+                self.next_id += 1
+                return new_id
+            return 0
+
+    cfg = Settings(
+        odoo_enabled=True,
+        odoo_url="https://odoo.example.com",
+        odoo_db="knowledge",
+        odoo_api_key="sk-test",
+        odoo_uid=6,
+    )
+    # platform شناخته‌شده
+    client = FakeClient()
+    store = OdooStorage(client=client, cfg=cfg, data_dir=str(tmp_path))
+    store.save(_content(platform="youtube", url="https://example.com/y"), _analysis())
+    create_call = [c for c in client.calls if c[1] == "create"]
+    assert create_call[-1][2][0]["icon"] == "▶️"
+    # platform ناشناخته → پیش‌فرض
+    client2 = FakeClient()
+    store2 = OdooStorage(client=client2, cfg=cfg, data_dir=str(tmp_path))
+    store2.save(_content(platform="mystery", url="https://example.com/m"), _analysis())
+    create_call2 = [c for c in client2.calls if c[1] == "create"]
+    assert create_call2[-1][2][0]["icon"] == "📄"
