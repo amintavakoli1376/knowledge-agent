@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     odoo_db: str = ""
     odoo_api_key: str = ""
     odoo_uid: int = 0
+    # آستانه‌ی حجم body (کاراکتر). بالاتر از این → بدنه کامل به ir.attachment می‌رود.
+    odoo_body_size_limit: int = 50000
 
     # Postgres migration target (Epic 3) — schema `ka` on the Odoo PG cluster
     pg_enabled: bool = False

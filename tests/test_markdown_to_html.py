@@ -118,3 +118,95 @@ def test_save_sets_icon_from_platform(tmp_path):
     store2.save(_content(platform="mystery", url="https://example.com/m"), _analysis())
     create_call2 = [c for c in client2.calls if c[1] == "create"]
     assert create_call2[-1][2][0]["icon"] == "📄"
+
+
+def test_large_body_goes_to_attachment(tmp_path):
+    from src.config import Settings
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+            self.att_id = 900
+            self.article_id = 100
+
+        def execute_kw(self, model, method, args, kwargs=None):
+            self.calls.append((model, method, args))
+            if method == "search_read" and args and args[0] and args[0][0]:
+                return [{"id": 1}] if args[0][0][1] == "=" else []
+            if model == "knowledge.article" and method == "create":
+                self.article_id += 1
+                return self.article_id
+            if model == "ir.attachment" and method == "create":
+                self.att_id += 1
+                return self.att_id
+            if model == "knowledge.article" and method == "write":
+                return True
+            return 0
+
+    cfg = Settings(
+        odoo_enabled=True,
+        odoo_url="https://odoo.example.com",
+        odoo_db="knowledge",
+        odoo_api_key="sk-test",
+        odoo_uid=6,
+        odoo_body_size_limit=200,  # آستانه بسیار کوچک برای واداشتن به مسیر attachment
+    )
+    client = FakeClient()
+    store = OdooStorage(client=client, cfg=cfg, data_dir=str(tmp_path))
+    big_text = "کلمه " * 200  # > 200 کاراکتر
+    store.save(_content(full_text=big_text), _analysis())
+
+    # مقاله ساخته شد
+    creates = [c for c in client.calls if c[0] == "knowledge.article" and c[1] == "create"]
+    assert len(creates) == 1
+    # بدنهٔ مقاله کوتاه است و لینک has
+    body = creates[0][2][0]["body"]
+    assert len(body) < 2000
+    assert "مشاهدهٔ محتوای کامل" in body
+
+    # attachment ساخته شد و بدنه با لینک واقعی به‌روز شد
+    att_creates = [c for c in client.calls if c[0] == "ir.attachment" and c[1] == "create"]
+    assert len(att_creates) == 1
+    att = att_creates[0][2][0]
+    assert att["res_model"] == "knowledge.article"
+    assert att["res_id"] == creates[0][2][0].get("res_id") or client.article_id
+    assert att["mimetype"] == "text/html"
+    # datas باید base64 داشته باشد
+    assert isinstance(att["datas"], str) and att["datas"]
+
+    writes = [c for c in client.calls if c[0] == "knowledge.article" and c[1] == "write"]
+    assert len(writes) == 1
+    written_body = writes[0][2][1]["body"]
+    assert "__FULL_LINK__" not in written_body
+    assert str(client.att_id) in written_body  # لینک واقعی قرار گرفت
+
+
+def test_small_body_no_attachment(tmp_path):
+    from src.config import Settings
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def execute_kw(self, model, method, args, kwargs=None):
+            self.calls.append((model, method, args))
+            if method == "search_read":
+                return []
+            if method == "create":
+                return 1
+            return 0
+
+    cfg = Settings(
+        odoo_enabled=True,
+        odoo_url="https://odoo.example.com",
+        odoo_db="knowledge",
+        odoo_api_key="sk-test",
+        odoo_uid=6,
+        odoo_body_size_limit=50000,
+    )
+    client = FakeClient()
+    store = OdooStorage(client=client, cfg=cfg, data_dir=str(tmp_path))
+    store.save(_content(full_text="Short text"), _analysis())
+    # هیچ attachment ساخته نشد
+    att = [c for c in client.calls if c[0] == "ir.attachment"]
+    assert att == []

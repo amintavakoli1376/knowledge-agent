@@ -7,6 +7,7 @@ SQLite mirror registry, and a get-or-create parent per platform.
 """
 from __future__ import annotations
 
+import base64
 import re
 import sqlite3
 from pathlib import Path
@@ -149,6 +150,39 @@ class OdooStorage:
         html = re.sub(r"<p>(.*?)</p>", _wrap_p, html, flags=re.S)
         return html
 
+    def _build_body(
+        self, content: ExtractedContent, analysis: AIAnalysis
+    ) -> tuple[str, dict | None]:
+        """بدنهٔ HTML نهایی + (اختیاری) payload attachment برای محتوای بسیار بزرگ.
+
+        اگر حجم HTML از `odoo_body_size_limit` بگذرد (بخش ۱۰)، بدنهٔ کامل
+        به‌صورت `ir.attachment` (base64) ساخته می‌شود و بدنهٔ مقاله فقط
+        خلاصه + لینک «مشاهدهٔ کامل» می‌شود.
+
+        Returns (body_html, attachment_payload | None). payload شامل `datas`
+        (base64) و `mimetype` است و بعد از ساخت مقاله با `res_id` کامل می‌شود.
+        """
+        html = self._markdown_to_html(content, analysis)
+        limit = getattr(self._cfg, "odoo_body_size_limit", 0)
+        if not limit or len(html) <= limit:
+            return html, None
+
+        title = content.title or "بدون عنوان"
+        summary = analysis.summary_fa or analysis.summary_en or ""
+        short_md = f"# {title}\n\n{summary}" if summary else f"# {title}"
+        short = _MD.render(short_md)
+        # لینک بعد از ساخت مقاله با `res_id` واقعی ساخته می‌شود؛ اینجا یک
+        # placeholder کوتاه می‌گذاریم که بعداً replace می‌شود.
+        short += "\n<p><a href=\"__FULL_LINK__\">مشاهدهٔ محتوای کامل</a></p>\n"
+
+        payload = {
+            "name": f"full-content-{content.url[:40]}",
+            "type": "binary",
+            "mimetype": "text/html",
+            "datas": base64.b64encode(html.encode("utf-8")).decode(),
+        }
+        return short, payload
+
     # -- public ----------------------------------------------------------
 
     def save(self, content: ExtractedContent, analysis: AIAnalysis) -> str | None:
@@ -168,9 +202,10 @@ class OdooStorage:
 
         try:
             parent_id = self._get_or_create_parent(content.platform or "website")
+            body, attachment = self._build_body(content, analysis)
             vals = {
                 "name": (content.title or "Untitled")[:255],
-                "body": self._markdown_to_html(content, analysis),
+                "body": body,
                 "article_url": url,
                 "parent_id": parent_id,
                 "icon": PLATFORM_ICON.get(content.platform, DEFAULT_ICON),
@@ -178,6 +213,30 @@ class OdooStorage:
             odoo_id = int(
                 self._client.execute_kw("knowledge.article", "create", [vals])
             )
+
+            if attachment is not None:
+                try:
+                    attachment["res_id"] = odoo_id
+                    attachment["res_model"] = "knowledge.article"
+                    att_id = int(
+                        self._client.execute_kw(
+                            "ir.attachment", "create", [attachment]
+                        )
+                    )
+                    full_link = (
+                        f"{self._cfg.odoo_url.rstrip('/')}"
+                        f"/web/content/{att_id}?download=true"
+                    )
+                    # بدنه را با لینک واقعی به‌روز کن.
+                    self._client.execute_kw(
+                        "knowledge.article",
+                        "write",
+                        [[odoo_id], {"body": body.replace("__FULL_LINK__", full_link)}],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Odoo attachment add failed (non-fatal): %s", exc
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Odoo write failed; enqueueing DLQ: %s", exc)
             self._dlq.enqueue(url, {"source_url": url}, str(exc))
