@@ -19,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 
 from src.config import settings
-from src.storage.db_pg import connect_pg
+from src.storage.db_pg import (
+    connect_pg,
+    pg_kg_build,
+    pg_kg_entity_resolve,
+)
 from src.storage.sqlite_store import DB_PATH, _get_connection
 
 TABLES = ("content", "doc_versions", "embeddings", "concepts")
@@ -217,8 +221,13 @@ def main():
     print("migration summary (rows processed):")
     for t, n in counts.items():
         print(f"  {t}: {n}")
-    if args.dry_run:
-        print("DRY RUN — not committed.")
+
+    if not args.dry_run:
+        print("graph phase (Epic 3B):")
+        print(f"  pg_kg_build()        -> {pg_kg_build()}")
+        print(f"  pg_kg_entity_resolve()-> merged={pg_kg_entity_resolve()}")
+    else:
+        print("DRY RUN — not committed (graph phase skipped).")
 
 
 if __name__ == "__main__":

@@ -27,9 +27,26 @@
 ## Hybrid search (3E-2)
 - `vector_store.search` reads `ka.embeddings` via pgvector `<=>` cosine.
 - `fts_search` reads `ka.content.search_ts` (tsvector, GIN).
-- `_graph_expand` reads `ka.concepts` (doc_ids remapped to PG ids; negative
-  url-hashes resolved against current ka.content urls).
+- `_graph_expand` reads `ka.kg_edges` (now the real graph; previously `ka.concepts.doc_ids`).
 - Rerank: `0.75*vector + 0.25*min(fts,1) + 0.05` when FTS matches.
+
+## Knowledge Graph (3F-1..3F-5)
+Real graph built in schema `ka` — `kg_nodes`/`kg_edges` filled from the live corpus
+(they were 0 rows after Epic 3).
+- **Nodes (262):** 100 `concept` (1:1 with `ka.concepts`), 27 `document`
+  (`key='doc:<content.id>'`), 135 `entity` (extracted from tags + capitalized title runs).
+- **Edges (227):** 47 `RELATES_TO` (pairs of documents sharing a concept),
+  6 `DISCUSSES` (documents sharing ≥ 2 concepts, weight = shared count),
+  174 `MENTIONS` (document → entity).
+- **Entity Resolution:** rule-based synonym groups (`llm`⇄`language models`/`large language model`,
+  `ai`⇄`artificial-intelligence`, …); rewires edges onto the canonical node and deletes the
+  synonym (2 merged in the first run). `pg_kg_entity_resolve()` returns the count merged.
+- `pg_graph_expand()` re-written to read `ka.kg_edges`: winner documents → incident edges →
+  sibling document nodes (capped at 2). Verified live: expand([65]) → [62, 66].
+- The remaining edge types (`CONTRADICTS`, `SUPERSEDES`, `PART_OF`) stay empty by design —
+  they need semantic analysis not available in this phase (YAGNI).
+- Scripts: `scripts/migrate_to_pg.py` runs the graph phase after data migration;
+  functions live in `src/storage/db_pg.py`.
 
 ## Bugs found & fixed
 - **embeddings.content_id orphaned**: migrated rows kept old SQLite ids while
