@@ -264,7 +264,8 @@ class TelegramBot:
             )
             notion_url = ""  # از Notion دوباره ذخیره نمی‌کنیم
             outline_url = await self._save_outline(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, outline_url)
+            odoo_url = await self._save_odoo(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url, odoo_url)
             return
 
         processing_msg = await update.message.reply_text(
@@ -310,7 +311,8 @@ class TelegramBot:
                 return
             
             outline_url = await self._save_outline(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, outline_url)
+            odoo_url = await self._save_odoo(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url, odoo_url)
             
             # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
             asyncio.create_task(self._embed_content(content))
@@ -466,7 +468,8 @@ class TelegramBot:
                 return
 
             outline_url = await self._save_outline(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, outline_url)
+            odoo_url = await self._save_odoo(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url, odoo_url)
 
             # ⚡ embedding بعد از جواب
             asyncio.create_task(self._embed_content(content))
@@ -516,7 +519,8 @@ class TelegramBot:
                 return
             
             outline_url = await self._save_outline(content, analysis)
-            await self._send_result(update, content, analysis, notion_url, outline_url)
+            odoo_url = await self._save_odoo(content, analysis)
+            await self._send_result(update, content, analysis, notion_url, outline_url, odoo_url)
             
             # ⚡ embedding بعد از جواب (بدون معطلی کاربر)
             asyncio.create_task(self._embed_content(content))
@@ -550,6 +554,22 @@ class TelegramBot:
             logger.warning(f"Outline save failed (non-fatal): {e}")
             return None
 
+    async def _save_odoo(self, content, analysis):
+        """Best-effort Odoo mirror save — never raises (Epic 2, 2F-1).
+
+        Mirrors the Outline pattern exactly: gated by ODOO_ENABLED, runs in a
+        thread (OdooStorage.save is blocking), and swallows every error so the
+        main Telegram flow (SQLite / Notion / Outline) is never broken.
+        """
+        if not getattr(settings, "odoo_enabled", False):
+            return None
+        from ..storage.odoo import OdooStorage
+        try:
+            return await asyncio.to_thread(OdooStorage().save, content, analysis)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Odoo save failed (non-fatal): {e}")
+            return None
+
     @staticmethod
     def _pending_message(content: ExtractedContent, notion_url: str | None) -> str:
         """پیام صادقانه برای رکورد ذخیره‌شده بدون خلاصه (سهمیهٔ AI تمام شده)."""
@@ -569,7 +589,8 @@ class TelegramBot:
         await update.message.reply_text(self._pending_message(content, notion_url))
 
     async def _send_result(self, update: Update, content: ExtractedContent, 
-                          analysis, notion_url: str, outline_url: str | None = None):
+                          analysis, notion_url: str, outline_url: str | None = None,
+                          odoo_url: str | None = None):
         """Send formatted result to user."""
         platform_emoji = {
             'arxiv': '📄', 'website': '🌐', 'youtube': '🎥',
@@ -605,6 +626,10 @@ class TelegramBot:
         # Outline link (best-effort parallel save)
         if outline_url and self._is_valid_url(outline_url):
             kb_rows.append([InlineKeyboardButton("📗 مشاهده در Outline", url=outline_url)])
+
+        # Odoo link (best-effort mirror — Epic 2)
+        if odoo_url and self._is_valid_url(odoo_url):
+            kb_rows.append([InlineKeyboardButton("🏛 مشاهده در Odoo", url=odoo_url)])
         
         # Original link button - ONLY for non-telegram posts with valid URL
         # For telegram posts, the t.me link is the post itself, not a "source link"
