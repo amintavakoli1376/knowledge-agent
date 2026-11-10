@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     odoo_uid: int = 0
     # آستانه‌ی حجم body (کاراکتر). بالاتر از این → بدنه کامل به ir.attachment می‌رود.
     odoo_body_size_limit: int = 50000
+    # ریشهٔ Workspace (knowledge.article id) که پرنت‌های platform زیر آن ساخته می‌شوند.
+    # 0 = غیرفعال (رفتار قدیمی: پرنت به‌عنوان ریشهٔ جدا). ~ ۲F-2
+    odoo_workspace_root_id: int = 0
 
     # Postgres migration target (Epic 3) — schema `ka` on the Odoo PG cluster
     pg_enabled: bool = False

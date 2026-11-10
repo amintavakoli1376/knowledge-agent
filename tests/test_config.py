@@ -6,7 +6,7 @@ from src.config import Settings
 
 
 def test_odoo_defaults_disabled():
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.odoo_enabled is False
     assert s.odoo_url == ""
     assert s.odoo_db == ""
@@ -19,7 +19,7 @@ def test_odoo_parses_from_env(monkeypatch):
     monkeypatch.setenv("ODOO_DB", "knowledge")
     monkeypatch.setenv("ODOO_API_KEY", "secret-key")
     monkeypatch.setenv("ODOO_UID", "6")
-    s = Settings()
+    s = Settings(_env_file=None)
     assert s.odoo_enabled is True
     assert s.odoo_url == "https://odoo.example.com"
     assert s.odoo_db == "knowledge"
@@ -35,4 +35,4 @@ def test_odoo_enabled_requires_config(monkeypatch):
     monkeypatch.delenv("ODOO_API_KEY", raising=False)
     monkeypatch.delenv("ODOO_UID", raising=False)
     with pytest.raises(ValidationError):
-        Settings()
+        Settings(_env_file=None)

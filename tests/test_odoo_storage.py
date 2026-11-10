@@ -114,3 +114,42 @@ def test_get_or_create_parent_creates_when_missing(tmp_path):
     created = [c for c in client.calls if c[1] == "create"]
     assert len(created) == 1
     assert created[0][2][0]["name"] == "telegram"
+
+
+def test_get_or_create_parent_under_workspace_root(tmp_path):
+    """Epic 2 / 2F-2: when odoo_workspace_root_id is set, the parent is
+    created as a child of the workspace root (Q5 visibility)."""
+    from src.config import Settings
+
+    client = FakeClient(parent_ids={})
+    cfg = Settings(
+        odoo_enabled=True,
+        odoo_url="https://odoo.example.com",
+        odoo_db="knowledge",
+        odoo_api_key="sk-test",
+        odoo_uid=6,
+        odoo_workspace_root_id=37,
+    )
+    store = OdooStorage(client=client, cfg=cfg, data_dir=str(tmp_path))
+    pid = store._get_or_create_parent("telegram")
+    assert pid == 100
+    created = [c for c in client.calls if c[1] == "create"]
+    assert len(created) == 1
+    assert created[0][2][0]["name"] == "telegram"
+    assert created[0][2][0]["parent_id"] == 37
+    # 2F-2: والد زیر ریشه باید اسکیمای article_properties را داشته باشد
+    assert created[0][2][0]["article_properties_definition"]
+
+
+def test_save_includes_article_properties(monkeypatch, tmp_path):
+    """Epic 2 / 2F-2: source_url/tags/source_date land in article_properties."""
+    client = FakeClient(parent_ids={"website": 5})
+    store = _make_store(client, tmp_path)
+    store.save(_content(), _analysis())
+    create_call = [c for c in client.calls if c[1] == "create"]
+    vals = create_call[-1][2][0]
+    props = vals.get("article_properties", {})
+    assert props.get("source_url") == "https://example.com/a"
+    assert props.get("platform") == "website"
+    assert props.get("tags") == "ai, python"
+    assert props.get("source_date") == "2026-11-01"

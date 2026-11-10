@@ -43,6 +43,16 @@ PLATFORM_ICON = {
 }
 DEFAULT_ICON = "📄"
 
+# اسکیمای article_properties (هم‌ساز با اسکیمای تعریف‌شده روی Workspace ریشه).
+# والدها باید این تعریف را داشته باشند وگرنه نوشتن properties روی فرزند
+# بی‌صدا دور ریخته می‌شود (یافتهٔ زنده ۲F-2).
+ARTICLE_PROPERTIES_DEFINITION = [
+    {"name": "source_url", "type": "char", "string": "Source URL"},
+    {"name": "tags", "type": "char", "string": "Tags"},
+    {"name": "source_date", "type": "date", "string": "Source Date"},
+    {"name": "platform", "type": "char", "string": "Platform"},
+]
+
 
 class OdooStorage:
     """Writes knowledge items into Odoo's knowledge.article model."""
@@ -96,18 +106,34 @@ class OdooStorage:
             logger.warning("odoo mirror write failed", exc_info=True)
 
     def _get_or_create_parent(self, platform: str) -> int:
-        """Find the platform parent article, creating it if missing."""
+        """Find the platform parent article, creating it if missing.
+
+        If ``odoo_workspace_root_id`` is set (>0), parents are created under
+        that workspace root (Q5: children inherit ``internal_permission='read'``
+        so mirrored articles are visible to all internal users). Otherwise the
+        legacy behavior is kept (parent as a standalone root).
+        """
+        root = getattr(self._cfg, "odoo_workspace_root_id", 0) or 0
+        domain = [["name", "=", platform]]
+        if root:
+            domain.append(["parent_id", "=", root])
         rows = self._client.execute_kw(
             "knowledge.article",
             "search_read",
-            [[["name", "=", platform]]],
+            [domain],
             {"fields": ["id"], "limit": 1},
         )
         if rows:
             return int(rows[0]["id"])
+        vals: dict = {"name": platform}
+        if root:
+            vals["parent_id"] = root
+            # والد باید اسکیمای properties را داشته باشد تا نوشتن روی فرزند
+            # دور ریخته نشود (۲F-2).
+            vals["article_properties_definition"] = ARTICLE_PROPERTIES_DEFINITION
         return int(
             self._client.execute_kw(
-                "knowledge.article", "create", [{"name": platform}]
+                "knowledge.article", "create", [vals]
             )
         )
 
@@ -203,6 +229,17 @@ class OdooStorage:
         try:
             parent_id = self._get_or_create_parent(content.platform or "website")
             body, attachment = self._build_body(content, analysis)
+            # FR-013/014: source_url + tags + source_date در article_properties
+            # (فقط اگر والد زیر ریشهٔ Workspace باشد با اسکیمای تعریف‌شده نوشته می‌شود).
+            props: dict = {}
+            if content.url:
+                props["source_url"] = content.url
+            if content.platform:
+                props["platform"] = content.platform
+            if analysis.tags:
+                props["tags"] = ", ".join(analysis.tags)
+            if getattr(content, "published_date", None):
+                props["source_date"] = content.published_date
             vals = {
                 "name": (content.title or "Untitled")[:255],
                 "body": body,
@@ -210,6 +247,8 @@ class OdooStorage:
                 "parent_id": parent_id,
                 "icon": PLATFORM_ICON.get(content.platform, DEFAULT_ICON),
             }
+            if props:
+                vals["article_properties"] = props
             odoo_id = int(
                 self._client.execute_kw("knowledge.article", "create", [vals])
             )
