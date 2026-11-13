@@ -33,3 +33,16 @@ models/
 # Local test env (contains the test API key)
 .env.test
 .hermes/
+
+# === Odoo deployment (monorepo under odoo/) ===
+# Secrets, runtime data, and large vendor artifacts never go to git.
+odoo/.env
+odoo/.admin_password
+odoo/.ka_*
+odoo/config/odoo.conf
+odoo/backups/
+odoo/enterprise_addons/
+odoo/core_dupes/
+odoo/odoo_enterprise.deb
+odoo/odoo_enterprise.zip
+odoo/compose.yaml.bak.*
