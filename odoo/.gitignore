@@ -1,0 +1,9 @@
+odoo_enterprise.deb
+odoo_enterprise.zip
+enterprise_addons/
+core_dupes/
+.env
+.admin_password
+config/odoo.conf
+compose.yaml.bak.*
+*.log

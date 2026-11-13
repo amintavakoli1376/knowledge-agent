@@ -1,0 +1,50 @@
+services:
+  odoo:
+    image: odoo:19.0-20250918
+    container_name: odoo-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8069:8069"
+    volumes:
+      - odoo-data:/var/lib/odoo
+      - ./config:/etc/odoo:ro
+      - ./enterprise_addons:/mnt/extra-addons:ro
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=${DB_PASSWORD}
+    mem_limit: 2g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8069/web/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  db:
+    image: postgres:16
+    container_name: odoo-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - odoo-db:/var/lib/postgresql/data
+    mem_limit: 1g
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  odoo-data:
+  odoo-db:
