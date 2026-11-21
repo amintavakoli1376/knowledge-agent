@@ -99,7 +99,7 @@ docker exec odoo-db psql -U odoo -d postgres -c "DROP DATABASE restore_test;"
 | نشانه | علت | راهکار |
 |---|---|---|
 | `status='failed'` + پیام «Embedding generation failed…» | chunkها با مدل bare ساخته شدهاند | حذف chunkهای `text-embedding-3-small`، set status=processing، دوباره `_cron_generate_embedding()` |
-| پاورقی «منابع:» خالی یا دوتایی | مدل خودش هدر را میسازد و کد قبلی چیزی اضافه نمیکرد | پچ `_append_citations` (پچ موجود): حذف بخش «منابع:» مدل با `rfind` + افزودن قطعی لیست منابع، هر منبع در خط خودش |
+| پاورقی «منابع:» خالی یا دوتایی | مدل خودش هدر را میسازد (گاه با `**منابع:**` یا بولت) و کد قبلی چیزی اضافه نمیکرد | پچ `_append_citations` (پچ موجود): بلاک انتهایی را با آخرین رخداد `منابع:` (با دونقطه) حذف میکند تا وسط متن (مثل «منابع موجود») قطع نشود؛ پاسخهای چندپیامی قبل از append یکی میشوند؛ هر منبع در خط خودش، بدون بولت مارکداون |
 | `ai_agent_count=0` | `_read_group` کلید recordset برمیگرداند، کد با `channel.id` میخواند | پچ `_compute_ai_agent_count` (پچ موجود) |
 | خطای اولیه در ساخت Agent | پاس ندادن `name` | به `create` مقدار `name` بدهید |
 | `pg_restore: input file is too short` | رستور از stdin میزبان | از `docker cp` + مسیر داخل کانتینر استفاده کنید |
